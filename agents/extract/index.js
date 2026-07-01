@@ -6,5 +6,5 @@ createAgentServer({
   port: 4008,
   priceUsdc: 0.001,
   systemPrompt: 'You are a structured data extraction agent. Extract structured information from text, HTML, or documents. Output valid JSON containing all extracted entities, dates, numbers, and key-value pairs. If given a specific schema to extract into, follow it exactly.',
-  buildPrompt: (prompt, context) => prompt,
+  buildPrompt: (prompt, context) => context ? `${prompt}\n\nSource text:\n${context}` : prompt,
 });

@@ -266,7 +266,10 @@ export default function JobPage() {
         if (pollingRef.current) clearInterval(pollingRef.current);
       }
     } catch (e: unknown) {
-      if ((e as { response?: { status?: number } })?.response?.status === 404) setNotFound(true);
+      if ((e as { response?: { status?: number } })?.response?.status === 404) {
+        if (pollingRef.current) clearInterval(pollingRef.current);
+        setNotFound(true);
+      }
     }
   }, [id]);
 
@@ -361,7 +364,7 @@ export default function JobPage() {
             <SubtaskNode key={st.id} st={st} index={i} total={subtasks.length} />
           ))}
           <p className="text-xs text-slate-600 text-center pt-1">
-            {DONE.has(job.status) ? 'Click any subtask to expand result' : 'Updating every 2s…'}
+            {DONE.has(job.status) ? 'Click any subtask to expand result' : job.status === 'settling' ? 'Settling payments on Arc…' : 'Updating every 2s…'}
           </p>
         </div>
       )}
