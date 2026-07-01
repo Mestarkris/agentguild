@@ -1,0 +1,26 @@
+{
+  "name": "agentguild-agents",
+  "version": "1.0.0",
+  "description": "AgentGuild agent pool — 12 x402-priced AI services",
+  "scripts": {
+    "start:all": "node start-all.js",
+    "start:summarizer":   "node summarizer/index.js",
+    "start:code-review":  "node code-review/index.js",
+    "start:research":     "node research/index.js",
+    "start:translate":    "node translate/index.js",
+    "start:sentiment":    "node sentiment/index.js",
+    "start:sql":          "node sql/index.js",
+    "start:chart":        "node chart/index.js",
+    "start:extract":      "node extract/index.js",
+    "start:legal-review": "node legal-review/index.js",
+    "start:finance":      "node finance/index.js",
+    "start:transcribe":   "node transcribe/index.js",
+    "start:fact-check":   "node fact-check/index.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.56.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2"
+  }
+}
