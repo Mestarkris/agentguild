@@ -41,6 +41,9 @@ async function settleJob(jobId, totalBudget) {
     VALUES (?, ?, ?, ?, ?, ?)
   `);
 
+  // The last subtask by position is the final output of the pipeline
+  const finalResult = [...allocated].sort((a, b) => a.position - b.position).at(-1)?.result ?? null;
+
   const settle = db.transaction(() => {
     for (const st of allocated) {
       const txHash = txMap[st.agent_id] || null;
@@ -48,8 +51,8 @@ async function settleJob(jobId, totalBudget) {
       updateAgent.run(st.payment_usdc, st.agent_id);
       insertTx.run(uuidv4(), jobId, st.agent_id, st.payment_usdc, txHash, demo ? 1 : 0);
     }
-    db.prepare(`UPDATE jobs SET status = 'completed', completed_at = ? WHERE id = ?`)
-      .run(settledAt, jobId);
+    db.prepare(`UPDATE jobs SET status = 'completed', completed_at = ?, result = ? WHERE id = ?`)
+      .run(settledAt, finalResult, jobId);
   });
 
   settle();

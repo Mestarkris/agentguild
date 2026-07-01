@@ -369,6 +369,25 @@ export default function JobPage() {
         </div>
       )}
 
+      {/* Final result */}
+      <AnimatePresence>
+        {job.status === 'completed' && job.result && (
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-6 rounded-xl border border-cyan-500/30 bg-slate-900/80 p-5"
+          >
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-sm font-semibold text-white">Final Output</span>
+              <span className="text-xs text-slate-500">· {subtasks.at(-1)?.skill}</span>
+            </div>
+            <pre className="text-sm text-slate-200 whitespace-pre-wrap leading-relaxed font-sans">
+              {job.result}
+            </pre>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Payment summary */}
       {job.total_price_usdc != null && subtasks.some(s => s.status === 'settled') && (
         <PaymentSummary subtasks={subtasks} total={job.total_price_usdc} />

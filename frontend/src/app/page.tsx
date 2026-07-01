@@ -8,10 +8,12 @@ import type { Metrics, Job } from '@/lib/types';
 import StatusBadge from '@/components/StatusBadge';
 
 const EXAMPLES = [
-  'Research DeFi trends in 2025, summarize the key findings, then translate the summary to Spanish',
-  'Review this Python code for bugs: def fib(n): return n if n<2 else fib(n-1)+fib(n-2)',
-  'Extract company names and stock tickers from this text, then fact-check them',
-  'Analyze sentiment of product reviews and generate a finance-style report',
+  'Research the latest AI agent payment protocols, summarize the key findings, then translate the summary to Spanish',
+  'Review this Python code for bugs: def fib(n): return n if n<2 else fib(n-1)+fib(n-2) — then fact-check that Fibonacci is O(2^n)',
+  'Write a SQL query to rank agents by USDC earned, then generate a bar chart spec for the results',
+  'Review this contract clause for legal risks: "Agent bears unlimited liability for output errors" — then fact-check enforceability under US law',
+  'Analyze sentiment of these product reviews, then generate a financial KPI report from the results',
+  'Research the history of stablecoins, extract key entities and dates, then summarize the timeline',
 ];
 
 export default function Home() {
