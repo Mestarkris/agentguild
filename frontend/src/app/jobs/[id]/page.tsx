@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
+import ReactMarkdown from 'react-markdown';
 import { getJob, flagJob } from '@/lib/api';
 import type { Job, Subtask } from '@/lib/types';
 import StatusBadge from '@/components/StatusBadge';
@@ -29,18 +30,118 @@ function truncateTx(tx: string) {
 
 function txLink(tx: string): string {
   if (!tx) return '';
-  // Real on-chain Arc tx hash starts with 0x and is 66 chars
   if (tx.startsWith('0x') && tx.length === 66) {
     return `https://arc-explorer.thecanteenapp.com/tx/${tx}`;
   }
-  // Circle transaction UUID — link to Circle developer console
   if (/^[0-9a-f-]{36}$/.test(tx)) {
     return `https://developer.circle.com/w3s/transactions/${tx}`;
   }
   return '';
 }
 
-// Pipeline node for each subtask
+// ─── Final result panel ───────────────────────────────────────────────────────
+
+function FinalResult({ result, status, subtasks }: {
+  result: string | null;
+  status: string;
+  subtasks: Subtask[];
+}) {
+  const [copied, setCopied] = useState(false);
+
+  const completedSubs = [...subtasks]
+    .filter(st => st.status === 'completed' || st.status === 'settled')
+    .sort((a, b) => a.position - b.position);
+
+  // For failed jobs that got partway, surface the last completed output
+  const displayResult = result ?? (status === 'failed' ? completedSubs.at(-1)?.result ?? null : null);
+  const isPartial = !result && !!displayResult;
+
+  if (!displayResult) return null;
+
+  function copy() {
+    navigator.clipboard.writeText(displayResult!).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      className={`mb-8 rounded-xl border p-5 ${
+        isPartial
+          ? 'border-amber-500/40 bg-amber-950/10'
+          : 'border-cyan-400/40 bg-slate-900/80'
+      }`}
+    >
+      <div className="flex items-center justify-between gap-3 mb-4">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-base font-bold text-white shrink-0">
+            {isPartial ? 'Partial Result' : 'Result'}
+          </span>
+          {isPartial ? (
+            <span className="text-xs text-amber-400/80 truncate">
+              job failed · last completed step: {completedSubs.at(-1)?.skill}
+            </span>
+          ) : (
+            <span className="text-xs text-slate-500 truncate">
+              · via {subtasks.length} agent{subtasks.length !== 1 ? 's' : ''}
+            </span>
+          )}
+        </div>
+        <button
+          onClick={copy}
+          className="shrink-0 text-xs px-2.5 py-1 rounded-lg border border-slate-700 hover:border-slate-500 text-slate-400 hover:text-white transition-colors font-mono"
+        >
+          {copied ? '✓ Copied' : 'Copy'}
+        </button>
+      </div>
+      <div className="text-sm text-slate-100 leading-relaxed prose prose-invert prose-sm max-w-none">
+        <ReactMarkdown>{displayResult}</ReactMarkdown>
+      </div>
+    </motion.div>
+  );
+}
+
+// ─── Failure breakdown (what completed vs what didn't) ────────────────────────
+
+function FailureSummary({ subtasks }: { subtasks: Subtask[] }) {
+  const failed = subtasks.filter(st => st.status === 'failed');
+  if (failed.length === 0) return null;
+
+  const completed = subtasks.filter(st => st.status === 'completed' || st.status === 'settled');
+
+  return (
+    <div className="mb-6 rounded-xl border border-red-900/40 bg-red-950/10 p-4">
+      <p className="text-xs font-semibold text-red-400 mb-2">
+        {completed.length} of {subtasks.length} step{subtasks.length !== 1 ? 's' : ''} completed
+      </p>
+      <div className="space-y-1 text-xs">
+        {subtasks.map(st => {
+          const isDone = st.status === 'completed' || st.status === 'settled';
+          const isFailed = st.status === 'failed';
+          return (
+            <div key={st.id} className="flex items-start gap-2">
+              <span className={`shrink-0 mt-0.5 font-mono ${isDone ? 'text-green-400' : isFailed ? 'text-red-400' : 'text-slate-600'}`}>
+                {isDone ? '✓' : isFailed ? '✗' : '○'}
+              </span>
+              <span className="text-slate-400">
+                {SKILL_EMOJI[st.skill] ?? '🤖'} {st.skill}
+              </span>
+              {isFailed && st.result && (
+                <span className="text-red-400/60 truncate" title={st.result}>{st.result}</span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─── Pipeline node for each subtask ──────────────────────────────────────────
+
 function SubtaskNode({ st, index, total }: { st: Subtask; index: number; total: number }) {
   const [expanded, setExpanded] = useState(false);
   const isRunning = st.status === 'running';
@@ -55,7 +156,6 @@ function SubtaskNode({ st, index, total }: { st: Subtask; index: number; total: 
       transition={{ delay: index * 0.08 }}
       className="relative"
     >
-      {/* Connector line (not after last) */}
       {index < total - 1 && (
         <div className="absolute left-6 top-full w-0.5 h-4 bg-slate-800 z-0" />
       )}
@@ -75,7 +175,6 @@ function SubtaskNode({ st, index, total }: { st: Subtask; index: number; total: 
           className="flex items-start gap-3 p-4 cursor-pointer select-none"
           onClick={() => (isDone || isFailed) && setExpanded(e => !e)}
         >
-          {/* Position + status ring */}
           <div className={`shrink-0 w-10 h-10 rounded-full flex items-center justify-center text-lg border-2 ${
             isRunning ? 'border-cyan-400 bg-cyan-950' :
             isDone ? 'border-green-500 bg-green-950' :
@@ -124,7 +223,6 @@ function SubtaskNode({ st, index, total }: { st: Subtask; index: number; total: 
           </div>
         </div>
 
-        {/* Expanded result */}
         <AnimatePresence>
           {expanded && (
             <motion.div
@@ -136,13 +234,12 @@ function SubtaskNode({ st, index, total }: { st: Subtask; index: number; total: 
               <div className="px-4 pb-4 space-y-3 border-t border-slate-800/60 pt-3">
                 {st.result && (
                   <div>
-                    <div className="text-xs text-slate-500 mb-1 uppercase tracking-wide">Result</div>
-                    <pre className="text-xs text-slate-300 whitespace-pre-wrap bg-slate-950 rounded-lg p-3 overflow-auto max-h-48 font-mono">
-                      {st.result}
-                    </pre>
+                    <div className="text-xs text-slate-500 mb-1 uppercase tracking-wide">Output</div>
+                    <div className="text-xs text-slate-300 bg-slate-950 rounded-lg p-3 overflow-auto max-h-56 prose prose-invert prose-xs max-w-none">
+                      <ReactMarkdown>{st.result}</ReactMarkdown>
+                    </div>
                   </div>
                 )}
-
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
                   {st.tokens_used > 0 && (
                     <Chip label="Tokens" value={String(st.tokens_used)} />
@@ -185,7 +282,8 @@ function Chip({ label, value, mono, href }: { label: string; value: string; mono
   );
 }
 
-// Animated payment split at the bottom
+// ─── Payment split visualization ──────────────────────────────────────────────
+
 function PaymentSummary({ subtasks, total }: { subtasks: Subtask[]; total: number }) {
   const settled = subtasks.filter(s => s.status === 'settled' && s.payment_usdc != null);
   if (settled.length === 0) return null;
@@ -200,7 +298,6 @@ function PaymentSummary({ subtasks, total }: { subtasks: Subtask[]; total: numbe
         <h3 className="text-sm font-semibold text-white">Payment Settlement</h3>
         <div className="text-cyan-400 font-bold font-mono">${total.toFixed(5)} USDC</div>
       </div>
-
       <div className="space-y-3">
         {settled.map((st, i) => {
           const pct = st.contribution_pct ?? 0;
@@ -246,11 +343,12 @@ function PaymentSummary({ subtasks, total }: { subtasks: Subtask[]; total: numbe
           );
         })}
       </div>
-
       <p className="text-xs text-slate-600 mt-3 text-center">Settled on Arc Testnet (chain 1111)</p>
     </motion.div>
   );
 }
+
+// ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function JobPage() {
   const { id } = useParams() as { id: string };
@@ -303,7 +401,8 @@ export default function JobPage() {
 
   return (
     <div className="max-w-2xl mx-auto px-6 py-10">
-      {/* Header */}
+
+      {/* ── Header ── */}
       <div className="mb-8">
         <Link href="/" className="text-xs text-slate-600 hover:text-slate-400 transition-colors mb-4 block">← All Jobs</Link>
 
@@ -329,8 +428,18 @@ export default function JobPage() {
         )}
       </div>
 
-      {/* Status timeline for phases without subtasks yet */}
-      {subtasks.length === 0 && (
+      {/* ── Final result — the main event, shown before the pipeline ── */}
+      {DONE.has(job.status) && (
+        <FinalResult result={job.result} status={job.status} subtasks={subtasks} />
+      )}
+
+      {/* ── Failure breakdown: which steps completed vs didn't ── */}
+      {job.status === 'failed' && subtasks.length > 0 && (
+        <FailureSummary subtasks={subtasks} />
+      )}
+
+      {/* ── Phase timeline (no subtasks yet, job still active) ── */}
+      {subtasks.length === 0 && !DONE.has(job.status) && (
         <div className="space-y-2 mb-8">
           {(['pending', 'planning', 'running'] as const).map(phase => {
             const phases = ['pending', 'planning', 'running', 'settling', 'completed'];
@@ -354,7 +463,7 @@ export default function JobPage() {
         </div>
       )}
 
-      {/* Subtask pipeline */}
+      {/* ── Subtask pipeline (transparency / expandable details) ── */}
       {subtasks.length > 0 && (
         <div className="space-y-3 mb-8">
           <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
@@ -364,54 +473,125 @@ export default function JobPage() {
             <SubtaskNode key={st.id} st={st} index={i} total={subtasks.length} />
           ))}
           <p className="text-xs text-slate-600 text-center pt-1">
-            {DONE.has(job.status) ? 'Click any subtask to expand result' : job.status === 'settling' ? 'Settling payments on Arc…' : 'Updating every 2s…'}
+            {DONE.has(job.status)
+              ? 'Click any subtask to expand its output'
+              : job.status === 'settling'
+              ? 'Settling payments on Arc…'
+              : 'Updating every 2s…'}
           </p>
         </div>
       )}
 
-      {/* Final result */}
-      <AnimatePresence>
-        {job.status === 'completed' && job.result && (
-          <motion.div
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="mb-6 rounded-xl border border-cyan-500/30 bg-slate-900/80 p-5"
-          >
-            <div className="flex items-center gap-2 mb-3">
-              <span className="text-sm font-semibold text-white">Final Output</span>
-              <span className="text-xs text-slate-500">· {subtasks.at(-1)?.skill}</span>
-            </div>
-            <pre className="text-sm text-slate-200 whitespace-pre-wrap leading-relaxed font-sans">
-              {job.result}
-            </pre>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Payment summary */}
+      {/* ── Payment summary ── */}
       {job.total_price_usdc != null && subtasks.some(s => s.status === 'settled') && (
-        <PaymentSummary subtasks={subtasks} total={job.total_price_usdc} />
+        <div className="mb-6">
+          <PaymentSummary subtasks={subtasks} total={job.total_price_usdc} />
+        </div>
       )}
 
-      {/* Completed banner */}
+      {/* ── Completed banner ── */}
       <AnimatePresence>
         {job.status === 'completed' && (
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="mt-6 rounded-xl border border-green-500/30 bg-green-950/20 p-4 text-center"
+            className="mt-2 mb-4 rounded-xl border border-green-500/30 bg-green-950/20 p-4 text-center"
           >
-            <div className="text-2xl mb-1">🎉</div>
-            <p className="text-green-400 font-semibold text-sm">Job Complete</p>
-            <p className="text-slate-500 text-xs mt-1">
-              {subtasks.length} agents · ${job.total_price_usdc?.toFixed(5)} USDC settled on Arc
+            <p className="text-green-400 font-semibold text-sm">
+              {subtasks.length} agent{subtasks.length !== 1 ? 's' : ''} · ${job.total_price_usdc?.toFixed(5)} USDC settled on Arc
             </p>
-            <Link href="/" className="mt-3 inline-block text-xs text-cyan-400 hover:text-cyan-300 transition-colors">
+            <Link href="/" className="mt-2 inline-block text-xs text-cyan-400 hover:text-cyan-300 transition-colors">
               Submit another job →
             </Link>
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* ── Flag / slash panel ── */}
+      {job.status === 'completed' && subtasks.some(s => s.status === 'settled') && (
+        <FlagPanel jobId={id} subtasks={subtasks} />
+      )}
+    </div>
+  );
+}
+
+// ─── Flag & slash panel ───────────────────────────────────────────────────────
+
+function FlagPanel({ jobId, subtasks }: { jobId: string; subtasks: Subtask[] }) {
+  const [open, setOpen] = useState(false);
+  const [selectedAgent, setSelectedAgent] = useState('');
+  const [reason, setReason] = useState('');
+  const [result, setResult] = useState<{ slashed: number; newBond: number } | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const settled = subtasks.filter(s => s.status === 'settled');
+
+  async function handleFlag() {
+    if (!selectedAgent || !reason.trim()) return;
+    setLoading(true);
+    try {
+      const res = await flagJob(jobId, selectedAgent, reason);
+      setResult(res);
+    } catch {
+      setResult(null);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="mt-4">
+      {!open ? (
+        <button
+          onClick={() => setOpen(true)}
+          className="text-xs text-slate-600 hover:text-red-400 transition-colors border border-slate-800 hover:border-red-900 rounded-lg px-3 py-1.5"
+        >
+          ⚑ Flag bad output &amp; slash agent bond
+        </button>
+      ) : (
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="rounded-xl border border-red-900/40 bg-red-950/10 p-4 space-y-3"
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-semibold text-red-400">Flag &amp; Slash Agent Bond</span>
+            <button onClick={() => setOpen(false)} className="text-xs text-slate-600 hover:text-slate-400">✕</button>
+          </div>
+          {result ? (
+            <div className="text-sm text-green-400">
+              Slashed ${result.slashed.toFixed(5)} USDC · new bond: ${result.newBond.toFixed(5)}
+            </div>
+          ) : (
+            <>
+              <select
+                value={selectedAgent}
+                onChange={e => setSelectedAgent(e.target.value)}
+                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white"
+              >
+                <option value="">Select agent to flag…</option>
+                {settled.map(s => (
+                  <option key={s.agent_id} value={s.agent_id}>{s.agent_name} ({s.skill})</option>
+                ))}
+              </select>
+              <input
+                type="text"
+                placeholder="Reason (e.g. hallucinated facts, wrong language)"
+                value={reason}
+                onChange={e => setReason(e.target.value)}
+                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-600"
+              />
+              <button
+                onClick={handleFlag}
+                disabled={!selectedAgent || !reason.trim() || loading}
+                className="w-full py-2 rounded-lg bg-red-900/50 hover:bg-red-800/50 border border-red-800 text-sm text-red-300 transition-colors disabled:opacity-40"
+              >
+                {loading ? 'Slashing…' : 'Slash Bond'}
+              </button>
+            </>
+          )}
+        </motion.div>
+      )}
     </div>
   );
 }
