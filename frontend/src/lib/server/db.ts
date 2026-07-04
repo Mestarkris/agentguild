@@ -182,7 +182,9 @@ export async function reloadFromBlob(): Promise<void> {
     const initSql = require('sql.js/dist/sql-asm.js');
     const SqlJs = await initSql.default();
     /* eslint-disable @typescript-eslint/no-explicit-any */
-    _db = new (SqlJs as any).Database(new Uint8Array(data));
+    const db = new (SqlJs as any).Database(new Uint8Array(data));
+    await ensureSchema(db);
+    _db = db;
     _dbPromise = null;
     _dirty = false;
   } catch (e) {
