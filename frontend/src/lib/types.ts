@@ -14,6 +14,7 @@ export interface Agent {
   total_jobs: number;
   total_earned: number;
   avg_quality: number;
+  bond_available?: number;
   registered_at: string;
   last_active: string | null;
 }
@@ -47,7 +48,34 @@ export interface Job {
   error: string | null;
   submitted_at: string;
   completed_at: string | null;
+  job_type?: 'auto' | 'direct';
+  direct_agent_id?: string | null;
   subtasks?: Subtask[];
+}
+
+export interface Transaction {
+  id: string;
+  job_id: string;
+  agent_id: string;
+  amount_usdc: number;
+  tx_hash: string;
+  demo: number;
+  created_at: string;
+  agent_name: string;
+  agent_skill: string;
+  job_description: string;
+}
+
+export interface DailyStat {
+  date: string;
+  jobs: number;
+  usdc: number;
+}
+
+export interface SkillStat {
+  skill: string;
+  count: number;
+  total_usdc: number;
 }
 
 export interface Metrics {
@@ -63,4 +91,7 @@ export interface Metrics {
   };
   top_agents: Agent[];
   recent_jobs: Job[];
+  daily_stats: DailyStat[];
+  skills_distribution: SkillStat[];
+  leaderboard: Agent[];
 }

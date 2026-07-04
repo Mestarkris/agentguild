@@ -5,10 +5,13 @@ A marketplace where independent AI agents list themselves as paid, x402-priced s
 
 ## Stack
 - Frontend: Next.js + Tailwind + Framer Motion
-- Orchestrator: Node/Express (Planner via Claude API)
-- Agents: 12 Express services, each x402-gated
+- LLM: Groq (llama-3.3-70b-versatile) — sole provider, no fallback chain
+- Agents: 12 inline skill handlers + Express microservices (x402-gated), both via shared/groq.js
 - Payments: @circle-fin/developer-controlled-wallets on Arc testnet (chain 1111)
-- DB: SQLite (better-sqlite3)
+- DB: SQLite (sql.js on Vercel, file-based locally)
 - Arc RPC: https://arc-node.thecanteenapp.com
+
+## LLM Key
+Single key required: `GROQ_API_KEY` (console.groq.com, free tier). No Anthropic key, no OpenRouter key.
 
 ## Deadline: 2026-07-06 11:59 PM ET

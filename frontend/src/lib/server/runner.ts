@@ -156,6 +156,73 @@ export async function runJob(jobId: string, description: string) {
   }
 }
 
+// Direct hire: single agent, no Planner decomposition
+export async function runDirectJob(jobId: string, description: string, agentId: string) {
+  const agentRows = await query('SELECT * FROM agents WHERE id = ?', [agentId]);
+  const agent = agentRows[0] as { id: string; skill: string; price_usdc: number; wallet_address: string; name: string } | undefined;
+  if (!agent) throw new Error(`Agent ${agentId} not found`);
+
+  const totalCost = parseFloat(agent.price_usdc.toFixed(6));
+  await exec('UPDATE jobs SET status = ?, total_price_usdc = ? WHERE id = ?', ['running', totalCost, jobId]);
+
+  const stId = uuidv4();
+  await exec(
+    'INSERT INTO subtasks (id, job_id, agent_id, skill, prompt, complexity_weight, position, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+    [stId, jobId, agentId, agent.skill, description, 1.0, 0, 'pending']
+  );
+
+  await exec('UPDATE subtasks SET status = ?, started_at = ? WHERE id = ?', ['running', new Date().toISOString(), stId]);
+
+  let finalResult: string | null = null;
+  try {
+    const { result, tokensUsed, qualityScore } = await runAgentInline(agent.skill, description, '');
+    finalResult = result;
+    await exec(
+      'UPDATE subtasks SET status = ?, result = ?, tokens_used = ?, quality_score = ?, completed_at = ? WHERE id = ?',
+      ['completed', result, tokensUsed, qualityScore, new Date().toISOString(), stId]
+    );
+    await exec(
+      'UPDATE agents SET avg_quality = MIN(1.0, MAX(0.1, avg_quality * 0.9 + ? * 0.1)) WHERE id = ?',
+      [qualityScore, agentId]
+    );
+  } catch (err) {
+    await exec('UPDATE subtasks SET status = ?, result = ? WHERE id = ?', ['failed', (err as Error).message, stId]);
+    await exec(
+      'UPDATE jobs SET status = ?, error = ?, completed_at = ? WHERE id = ?',
+      ['failed', (err as Error).message, new Date().toISOString(), jobId]
+    );
+    await flushNow();
+    return;
+  }
+
+  await exec('UPDATE jobs SET status = ? WHERE id = ?', ['settling', jobId]);
+
+  try {
+    const splits = [{ agentId, walletAddress: agent.wallet_address, usdcAmount: totalCost, subtaskId: stId }];
+    const { txMap, settledAt, demo } = await executeAgentSplits(splits, jobId);
+    const txHash = txMap[agentId] ?? null;
+
+    await exec(
+      'UPDATE subtasks SET contribution_pct = ?, payment_usdc = ?, payment_tx = ?, status = ? WHERE id = ?',
+      [1.0, totalCost, txHash, 'settled', stId]
+    );
+    await exec(
+      'UPDATE agents SET total_earned = total_earned + ?, total_jobs = total_jobs + 1, last_active = ? WHERE id = ?',
+      [totalCost, new Date().toISOString(), agentId]
+    );
+    await exec(
+      'INSERT INTO transactions (id, job_id, agent_id, amount_usdc, tx_hash, demo) VALUES (?, ?, ?, ?, ?, ?)',
+      [uuidv4(), jobId, agentId, totalCost, txHash, demo ? 1 : 0]
+    );
+    await exec('UPDATE jobs SET status = ?, completed_at = ?, result = ? WHERE id = ?', ['completed', settledAt, finalResult, jobId]);
+    await flushNow();
+  } catch (err) {
+    console.error(`[DirectJob ${jobId}] Settlement failed:`, (err as Error).message);
+    await exec('UPDATE jobs SET status = ?, completed_at = ?, result = ? WHERE id = ?', ['completed', new Date().toISOString(), finalResult, jobId]);
+    await flushNow();
+  }
+}
+
 export async function slashAgent(agentId: string, jobId: string | null, reason: string) {
   const rows = await query('SELECT bond_amount, bond_slashed FROM agents WHERE id = ?', [agentId]) as { bond_amount: number; bond_slashed: number }[];
   if (!rows[0]) throw new Error(`Agent ${agentId} not found`);

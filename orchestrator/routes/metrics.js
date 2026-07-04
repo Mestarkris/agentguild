@@ -37,6 +37,33 @@ router.get('/', (req, res) => {
     FROM jobs ORDER BY submitted_at DESC LIMIT 10
   `).all();
 
+  const dailyStats = db.prepare(`
+    SELECT
+      date(submitted_at) as date,
+      COUNT(*) as jobs,
+      SUM(CASE WHEN status = 'completed' THEN COALESCE(total_price_usdc, 0) ELSE 0 END) as usdc
+    FROM jobs
+    WHERE submitted_at >= date('now', '-6 days')
+    GROUP BY date(submitted_at)
+    ORDER BY date ASC
+  `).all();
+
+  const skillsDistribution = db.prepare(`
+    SELECT a.skill, COUNT(*) as count, COALESCE(SUM(t.amount_usdc), 0) as total_usdc
+    FROM transactions t
+    JOIN agents a ON a.id = t.agent_id
+    GROUP BY a.skill
+    ORDER BY count DESC
+  `).all();
+
+  const leaderboard = db.prepare(`
+    SELECT id, name, skill, total_earned, total_jobs, avg_quality,
+           bond_amount, bond_slashed,
+           (bond_amount - bond_slashed) as bond_available,
+           wallet_address, last_active
+    FROM agents ORDER BY total_earned DESC
+  `).all();
+
   res.json({
     totals: {
       jobs_completed: totals.completed_jobs || 0,
@@ -50,6 +77,9 @@ router.get('/', (req, res) => {
     },
     top_agents: topAgents,
     recent_jobs: recentJobs,
+    daily_stats: dailyStats,
+    skills_distribution: skillsDistribution,
+    leaderboard,
   });
 });
 

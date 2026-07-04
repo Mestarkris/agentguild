@@ -3,28 +3,21 @@
 @tailwind utilities;
 
 :root {
-  --cyan: #06b6d4;
-  --violet: #8b5cf6;
+  --amber: #ef9f27;
+  --bg: #050508;
+  --surface: #0d0d14;
 }
 
 body {
-  background: #020617;
+  background: var(--bg);
   color: white;
 }
 
 .grid-bg {
   background-image:
-    linear-gradient(rgba(6, 182, 212, 0.04) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(6, 182, 212, 0.04) 1px, transparent 1px);
+    linear-gradient(rgba(239, 159, 39, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(239, 159, 39, 0.03) 1px, transparent 1px);
   background-size: 60px 60px;
-}
-
-.glow-ring-cyan {
-  box-shadow: 0 0 0 1px rgba(6, 182, 212, 0.3), 0 0 16px rgba(6, 182, 212, 0.2);
-}
-
-.glow-ring-violet {
-  box-shadow: 0 0 0 1px rgba(139, 92, 246, 0.3), 0 0 16px rgba(139, 92, 246, 0.2);
 }
 
 .node-pulse {
@@ -32,15 +25,11 @@ body {
 }
 
 @keyframes nodePulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(6, 182, 212, 0.4); }
-  50% { box-shadow: 0 0 0 8px rgba(6, 182, 212, 0); }
+  0%, 100% { box-shadow: 0 0 0 0 rgba(239, 159, 39, 0.4); }
+  50% { box-shadow: 0 0 0 8px rgba(239, 159, 39, 0); }
 }
 
-.payment-spark {
-  animation: sparkMove 0.8s ease-out forwards;
-}
-
-@keyframes sparkMove {
-  from { transform: translateX(0); opacity: 1; }
-  to { transform: translateX(40px); opacity: 0; }
+@keyframes ticker {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
 }

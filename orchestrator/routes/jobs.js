@@ -25,8 +25,51 @@ const AGENT_URLS = {
 
 router.get('/', (req, res) => {
   const db = getDb();
-  const jobs = db.prepare('SELECT * FROM jobs ORDER BY submitted_at DESC LIMIT 50').all();
-  res.json(jobs);
+  const { status, limit = 50, search } = req.query;
+  let sql = 'SELECT * FROM jobs';
+  const params = [];
+  const clauses = [];
+  if (status && status !== 'all') { clauses.push('status = ?'); params.push(status); }
+  if (search) { clauses.push('description LIKE ?'); params.push(`%${search}%`); }
+  if (clauses.length) sql += ' WHERE ' + clauses.join(' AND ');
+  sql += ' ORDER BY submitted_at DESC LIMIT ?';
+  params.push(Math.min(parseInt(limit) || 50, 200));
+  res.json(db.prepare(sql).all(...params));
+});
+
+// SSE: real-time job stream
+router.get('/:id/stream', (req, res) => {
+  const db = getDb();
+  const { id } = req.params;
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders();
+
+  function send() {
+    const job = db.prepare('SELECT * FROM jobs WHERE id = ?').get(id);
+    if (!job) {
+      res.write(`event: error\ndata: ${JSON.stringify({ error: 'not found' })}\n\n`);
+      clearInterval(timer);
+      res.end();
+      return;
+    }
+    const subtasks = db.prepare(`
+      SELECT st.*, a.name as agent_name, a.skill
+      FROM subtasks st LEFT JOIN agents a ON a.id = st.agent_id
+      WHERE st.job_id = ? ORDER BY st.position
+    `).all(id);
+    res.write(`data: ${JSON.stringify({ ...job, subtasks })}\n\n`);
+    if (job.status === 'completed' || job.status === 'failed') {
+      clearInterval(timer);
+      setTimeout(() => res.end(), 200);
+    }
+  }
+
+  send();
+  const timer = setInterval(send, 1000);
+  req.on('close', () => clearInterval(timer));
 });
 
 router.get('/:id', (req, res) => {

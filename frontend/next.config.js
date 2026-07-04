@@ -1,13 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  async rewrites() {
-    return [
-      {
-        source: '/api/:path*',
-        destination: (process.env.ORCHESTRATOR_URL || 'http://localhost:4000') + '/api/:path*',
-      },
-    ];
-  },
+  serverExternalPackages: ['sql.js', 'pdfkit'],
 };
 
 module.exports = nextConfig;

@@ -1,4 +1,4 @@
-const { chatComplete } = require('../../shared/openrouter');
+const { chatComplete } = require('../../shared/groq');
 
 const SKILLS = [
   'summarizer', 'code-review', 'research', 'translate',

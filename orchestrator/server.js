@@ -16,6 +16,7 @@ app.use(morgan('dev'));
 app.use('/api/agents', require('./routes/agents'));
 app.use('/api/jobs', require('./routes/jobs'));
 app.use('/api/metrics', require('./routes/metrics'));
+app.use('/api/transactions', require('./routes/transactions'));
 
 app.get('/health', (req, res) => res.json({ ok: true, ts: Date.now() }));
 

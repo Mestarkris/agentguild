@@ -355,18 +355,24 @@ export default function JobPage() {
   const [job, setJob] = useState<Job | null>(null);
   const [notFound, setNotFound] = useState(false);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const notFoundCountRef = useRef(0);
 
   const fetchJob = useCallback(async () => {
     try {
       const j = await getJob(id);
+      notFoundCountRef.current = 0;
       setJob(j);
       if (DONE.has(j.status)) {
         if (pollingRef.current) clearInterval(pollingRef.current);
       }
     } catch (e: unknown) {
       if ((e as { response?: { status?: number } })?.response?.status === 404) {
-        if (pollingRef.current) clearInterval(pollingRef.current);
-        setNotFound(true);
+        // Vercel Blob has propagation lag — retry several times before giving up
+        notFoundCountRef.current += 1;
+        if (notFoundCountRef.current >= 5) {
+          if (pollingRef.current) clearInterval(pollingRef.current);
+          setNotFound(true);
+        }
       }
     }
   }, [id]);
@@ -404,7 +410,7 @@ export default function JobPage() {
 
       {/* ── Header ── */}
       <div className="mb-8">
-        <Link href="/" className="text-xs text-slate-600 hover:text-slate-400 transition-colors mb-4 block">← All Jobs</Link>
+        <Link href="/jobs" className="text-xs text-slate-600 hover:text-slate-400 transition-colors mb-4 block">← All Jobs</Link>
 
         <div className="flex items-start gap-3 mb-3">
           <StatusBadge status={job.status} size="md" />
@@ -487,6 +493,27 @@ export default function JobPage() {
         <div className="mb-6">
           <PaymentSummary subtasks={subtasks} total={job.total_price_usdc} />
         </div>
+      )}
+
+      {/* ── PDF download (Phase D) ── */}
+      {job.status === 'completed' && (
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mb-4"
+        >
+          <a
+            href={`/api/jobs/${id}/pdf`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center justify-center gap-2 w-full py-3 rounded-xl border border-[rgba(239,159,39,0.4)] text-[#ef9f27] font-mono text-sm hover:bg-[rgba(239,159,39,0.08)] transition-colors"
+          >
+            ↓ Download result (PDF)
+          </a>
+          <p className="text-center text-[10px] font-mono text-[#3a3a44] mt-1">
+            Includes job request · agent(s) · output · payment tx hash
+          </p>
+        </motion.div>
       )}
 
       {/* ── Completed banner ── */}
