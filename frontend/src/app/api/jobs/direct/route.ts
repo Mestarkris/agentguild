@@ -21,6 +21,7 @@ export async function POST(req: NextRequest) {
     let agentId: string;
     let description: string;
     let payerAddress: string | undefined;
+    let buyerTx: string | undefined;
 
     const contentType = req.headers.get('content-type') ?? '';
 
@@ -29,6 +30,7 @@ export async function POST(req: NextRequest) {
       agentId = (form.get('agentId') as string | null) ?? '';
       description = (form.get('description') as string | null) ?? '';
       payerAddress = (form.get('payer_address') as string | null) ?? undefined;
+      buyerTx = (form.get('buyer_tx') as string | null) ?? undefined;
       const file = form.get('file') as File | null;
 
       if (file && file.size > 0) {
@@ -69,10 +71,11 @@ export async function POST(req: NextRequest) {
         }
       }
     } else {
-      const body = await req.json() as { agentId?: string; description?: string; payer_address?: string };
+      const body = await req.json() as { agentId?: string; description?: string; payer_address?: string; buyer_tx?: string };
       agentId = body.agentId ?? '';
       description = body.description ?? '';
       payerAddress = body.payer_address;
+      buyerTx = body.buyer_tx;
     }
 
     if (!agentId?.trim()) return NextResponse.json({ error: 'agentId required' }, { status: 400 });
@@ -83,8 +86,8 @@ export async function POST(req: NextRequest) {
 
     const jobId = uuidv4();
     await exec(
-      "INSERT INTO jobs (id, description, status, job_type, direct_agent_id) VALUES (?, ?, 'pending', 'direct', ?)",
-      [jobId, description.trim(), agentId]
+      "INSERT INTO jobs (id, description, status, job_type, direct_agent_id, buyer_tx) VALUES (?, ?, 'pending', 'direct', ?, ?)",
+      [jobId, description.trim(), agentId, buyerTx ?? null]
     );
     await flushNow();
 

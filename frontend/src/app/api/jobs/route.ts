@@ -39,21 +39,19 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     await ensureSeeded();
-    const body = await req.json() as { description?: string; payer_address?: string };
-    const { description, payer_address } = body;
+    const body = await req.json() as { description?: string; payer_address?: string; buyer_tx?: string };
+    const { description, payer_address, buyer_tx } = body;
 
     if (!description?.trim()) {
       return NextResponse.json({ error: 'description required' }, { status: 400 });
     }
 
     const jobId = uuidv4();
-    console.log(`[Job ${jobId}] Creating — payer: ${payer_address ?? 'none'}`);
+    console.log(`[Job ${jobId}] Creating — payer: ${payer_address ?? 'none'} buyer_tx: ${buyer_tx ?? 'none'}`);
 
-    // Must await — exec is async (loads DB from Vercel Blob on cold start).
-    // Without await the INSERT races the response; a new lambda reads stale blob → 404.
     await exec(
-      'INSERT INTO jobs (id, description, status) VALUES (?, ?, ?)',
-      [jobId, description.trim(), 'pending']
+      'INSERT INTO jobs (id, description, status, buyer_tx) VALUES (?, ?, ?, ?)',
+      [jobId, description.trim(), 'pending', buyer_tx ?? null]
     );
 
     // Flush to Vercel Blob immediately so any subsequent lambda can read this job.

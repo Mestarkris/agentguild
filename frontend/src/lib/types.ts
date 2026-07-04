@@ -50,6 +50,7 @@ export interface Job {
   completed_at: string | null;
   job_type?: 'auto' | 'direct';
   direct_agent_id?: string | null;
+  buyer_tx?: string | null;
   subtasks?: Subtask[];
 }
 

@@ -1,12 +1,11 @@
 import { NextResponse } from 'next/server';
-import { query, reloadFromBlob } from '@/lib/server/db';
+import { query } from '@/lib/server/db';
 import { ensureSeeded } from '@/lib/server/seed';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {
-    await reloadFromBlob();
     await ensureSeeded();
 
     const totalsRows = await query(`

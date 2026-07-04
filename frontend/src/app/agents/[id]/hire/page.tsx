@@ -31,7 +31,7 @@ function truncAddr(a: string) { return `${a.slice(0, 6)}…${a.slice(-4)}`; }
 export default function HirePage() {
   const { id } = useParams() as { id: string };
   const router = useRouter();
-  const { address, balance, connecting, connect, signPaymentAuth } = useWallet();
+  const { address, balance, connecting, connect, sendPayment } = useWallet();
 
   const [agent, setAgent] = useState<Agent | null>(null);
   const [notFound, setNotFound] = useState(false);
@@ -41,6 +41,7 @@ export default function HirePage() {
   const [fileWarning, setFileWarning] = useState('');
   const [approved, setApproved] = useState(false);
   const [approving, setApproving] = useState(false);
+  const [buyerTxHash, setBuyerTxHash] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -53,7 +54,7 @@ export default function HirePage() {
     }).catch(() => setNotFound(true));
   }, [id]);
 
-  useEffect(() => { setApproved(false); setApproving(false); }, [description, file]);
+  useEffect(() => { setApproved(false); setApproving(false); setBuyerTxHash(null); }, [description, file]);
 
   if (notFound) {
     return (
@@ -99,7 +100,7 @@ export default function HirePage() {
     setError('');
     try {
       const desc = inputMode === 'text' ? description : (description.trim() || `Process file: ${file!.name}`);
-      const { jobId } = await submitDirectJob(id, desc, address, inputMode === 'file' ? file ?? undefined : undefined);
+      const { jobId } = await submitDirectJob(id, desc, address, inputMode === 'file' ? file ?? undefined : undefined, buyerTxHash ?? undefined);
       router.push(`/jobs/${jobId}`);
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
@@ -280,19 +281,29 @@ export default function HirePage() {
               <button type="button" disabled={!hasInput || approving}
                 onClick={async () => {
                   setApproving(true);
-                  const jobDesc = description.trim() || `Hire ${agent.name} for ${agent.skill}`;
-                  const ok = await signPaymentAuth(estimatedCost, jobDesc);
-                  setApproving(false);
-                  if (ok) setApproved(true);
+                  setError('');
+                  try {
+                    const jobDesc = description.trim() || `Hire ${agent.name} for ${agent.skill}`;
+                    const txHash = await sendPayment(estimatedCost, jobDesc);
+                    setBuyerTxHash(txHash);
+                    setApproved(true);
+                  } catch (err: unknown) {
+                    const msg = (err as Error)?.message ?? 'Payment failed';
+                    if (!msg.toLowerCase().includes('user rejected') && !msg.toLowerCase().includes('user denied')) {
+                      setError(msg);
+                    }
+                  } finally {
+                    setApproving(false);
+                  }
                 }}
                 className="w-full py-3 rounded-xl font-mono text-sm border border-[rgba(239,159,39,0.5)] text-[#ef9f27] hover:bg-[rgba(239,159,39,0.1)] disabled:opacity-40 disabled:cursor-not-allowed transition-all">
                 {approving ? (
                   <span className="flex items-center justify-center gap-2">
                     <span className="w-3.5 h-3.5 border-2 border-[rgba(239,159,39,0.3)] border-t-[#ef9f27] rounded-full animate-spin" />
-                    Waiting for wallet…
+                    Sending USDC · waiting for confirmation…
                   </span>
                 ) : hasInput
-                  ? `Approve $${estimatedCost} USDC & hire ${agent.name} →`
+                  ? `Send $${estimatedCost} USDC & hire ${agent.name} →`
                   : inputMode === 'file' ? 'Upload a file to continue' : 'Describe your job to continue'}
               </button>
             ) : (

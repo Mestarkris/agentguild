@@ -204,11 +204,23 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     doc.moveDown(0.3);
 
     doc.fontSize(8.5).font('Helvetica').fillColor('#888888')
-       .text(`Network: Arc Testnet (Chain 1111)  ·  Transactions: ${settled.length}  ·  Protocol: x402`);
+       .text(`Network: Arc Testnet (Chain 5042002)  ·  Transactions: ${settled.length + (job.buyer_tx ? 1 : 0)}  ·  Protocol: x402`);
     doc.fillColor('#000000');
+
+    // Buyer → Platform tx
+    if (job.buyer_tx) {
+      doc.moveDown(0.6);
+      doc.fontSize(9).font('Helvetica-Bold').fillColor('#22c55e').text('Buyer → Platform (USDC transfer)');
+      doc.fontSize(8).font('Courier').fillColor('#555555').text(`  Tx: ${String(job.buyer_tx)}`);
+      doc.fontSize(7.5).font('Helvetica').fillColor('#22c55e')
+         .text(`  https://testnet.arcscan.app/tx/${String(job.buyer_tx)}`);
+      doc.fillColor('#000000');
+    }
 
     if (settled.length > 0) {
       doc.moveDown(0.6);
+      doc.fontSize(9).font('Helvetica-Bold').fillColor('#ef9f27').text('Platform → Agents (nanopayments)');
+      doc.moveDown(0.3);
       for (const st of settled) {
         const tx = String(st.payment_tx ?? '');
         const amt = typeof st.payment_usdc === 'number' ? st.payment_usdc.toFixed(6) : '0';

@@ -18,9 +18,10 @@ export async function getJobs(): Promise<Job[]> {
   return data;
 }
 
-export async function submitJob(description: string, payerAddress?: string): Promise<{ jobId: string }> {
+export async function submitJob(description: string, payerAddress?: string, buyerTx?: string): Promise<{ jobId: string }> {
   const body: Record<string, string> = { description };
   if (payerAddress) body.payer_address = payerAddress;
+  if (buyerTx) body.buyer_tx = buyerTx;
   const { data } = await api.post('/jobs', body);
   return { jobId: data.jobId };
 }
@@ -49,13 +50,15 @@ export async function submitDirectJob(
   agentId: string,
   description: string,
   payerAddress?: string,
-  file?: File
+  file?: File,
+  buyerTx?: string,
 ): Promise<{ jobId: string }> {
   const form = new FormData();
   form.append('agentId', agentId);
   form.append('description', description);
   if (payerAddress) form.append('payer_address', payerAddress);
   if (file) form.append('file', file);
+  if (buyerTx) form.append('buyer_tx', buyerTx);
   const { data } = await api.post('/jobs/direct', form);
   return { jobId: data.jobId };
 }

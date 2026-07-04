@@ -17,14 +17,18 @@ type SqlJsDatabase = {
 let _db: SqlJsDatabase | null = null;
 let _dbPromise: Promise<SqlJsDatabase> | null = null;
 let _SqlJs: any = null; // cached WASM instance — one per lambda lifetime
+let _SqlJsInitPromise: Promise<any> | null = null; // dedup concurrent init calls
 let _dirty = false;
 let _saveTimer: ReturnType<typeof setTimeout> | null = null;
 let _blobUrl: string | null = null;
 
 async function getSqlJs(): Promise<any> {
   if (_SqlJs) return _SqlJs;
-  const initSql = require('sql.js/dist/sql-asm.js');
-  _SqlJs = await initSql.default();
+  if (!_SqlJsInitPromise) {
+    const initSql = require('sql.js/dist/sql-asm.js');
+    _SqlJsInitPromise = initSql.default();
+  }
+  _SqlJs = await _SqlJsInitPromise;
   return _SqlJs;
 }
 
@@ -125,7 +129,7 @@ function ensureSchema(db: SqlJsDatabase): Promise<void> {
     );
     CREATE TABLE IF NOT EXISTS jobs (
       id TEXT PRIMARY KEY, description TEXT NOT NULL, status TEXT DEFAULT 'pending',
-      total_price_usdc REAL, escrow_tx TEXT, result TEXT, error TEXT,
+      total_price_usdc REAL, escrow_tx TEXT, buyer_tx TEXT, result TEXT, error TEXT,
       submitted_at TEXT DEFAULT (datetime('now')), completed_at TEXT
     );
     CREATE TABLE IF NOT EXISTS subtasks (
@@ -147,6 +151,7 @@ function ensureSchema(db: SqlJsDatabase): Promise<void> {
   for (const ddl of [
     "ALTER TABLE jobs ADD COLUMN job_type TEXT DEFAULT 'auto'",
     'ALTER TABLE jobs ADD COLUMN direct_agent_id TEXT',
+    'ALTER TABLE jobs ADD COLUMN buyer_tx TEXT',
   ]) {
     try { db.exec(ddl); } catch { /* column already exists */ }
   }
@@ -221,7 +226,7 @@ export async function initSchema(): Promise<void> {
     );
     CREATE TABLE IF NOT EXISTS jobs (
       id TEXT PRIMARY KEY, description TEXT NOT NULL, status TEXT DEFAULT 'pending',
-      total_price_usdc REAL, escrow_tx TEXT, result TEXT, error TEXT,
+      total_price_usdc REAL, escrow_tx TEXT, buyer_tx TEXT, result TEXT, error TEXT,
       submitted_at TEXT DEFAULT (datetime('now')), completed_at TEXT
     );
     CREATE TABLE IF NOT EXISTS subtasks (
@@ -241,10 +246,11 @@ export async function initSchema(): Promise<void> {
     );
   `);
 
-  // Migration: add direct-hire columns (SQLite ALTER TABLE lacks IF NOT EXISTS)
+  // Migration: add columns incrementally (SQLite ALTER TABLE lacks IF NOT EXISTS)
   for (const ddl of [
     "ALTER TABLE jobs ADD COLUMN job_type TEXT DEFAULT 'auto'",
     'ALTER TABLE jobs ADD COLUMN direct_agent_id TEXT',
+    'ALTER TABLE jobs ADD COLUMN buyer_tx TEXT',
   ]) {
     try { db.exec(ddl); } catch { /* column already exists */ }
   }

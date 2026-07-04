@@ -35,13 +35,14 @@ function statusDot(status: string): string {
 
 
 export default function Home() {
-  const { address, balance, connect, connecting, signPaymentAuth } = useWallet();
+  const { address, balance, connect, connecting, sendPayment } = useWallet();
   const router = useRouter();
   const [metrics, setMetrics] = useState<Metrics | null>(null);
   const [description, setDescription] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [approving, setApproving] = useState(false);
   const [approved, setApproved] = useState(false);
+  const [buyerTxHash, setBuyerTxHash] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [recentJobs, setRecentJobs] = useState<Job[]>([]);
 
@@ -60,7 +61,7 @@ export default function Home() {
   }, [refresh]);
 
   // Reset approval when description changes
-  useEffect(() => { setApproved(false); setApproving(false); }, [description]);
+  useEffect(() => { setApproved(false); setApproving(false); setBuyerTxHash(null); }, [description]);
 
   const estimatedCost = description.trim()
     ? Math.max(0.0015, description.split(/\s+/).filter(Boolean).length * 0.00015).toFixed(4)
@@ -77,7 +78,7 @@ export default function Home() {
 
     try {
       console.log('[Submit] Calling POST /api/jobs...');
-      const { jobId } = await submitJob(description, address);
+      const { jobId } = await submitJob(description, address, buyerTxHash ?? undefined);
       console.log('[Submit] Job created:', jobId);
 
       if (!jobId) {
@@ -209,18 +210,28 @@ export default function Home() {
                   disabled={!description.trim() || approving}
                   onClick={async () => {
                     setApproving(true);
-                    const ok = await signPaymentAuth(estimatedCost, description);
-                    setApproving(false);
-                    if (ok) setApproved(true);
+                    setError('');
+                    try {
+                      const txHash = await sendPayment(estimatedCost, description);
+                      setBuyerTxHash(txHash);
+                      setApproved(true);
+                    } catch (err: unknown) {
+                      const msg = (err as Error)?.message ?? 'Payment failed';
+                      if (!msg.toLowerCase().includes('user rejected') && !msg.toLowerCase().includes('user denied')) {
+                        setError(msg);
+                      }
+                    } finally {
+                      setApproving(false);
+                    }
                   }}
                   className="w-full py-3 rounded-xl font-mono text-sm border border-[rgba(239,159,39,0.5)] text-[#ef9f27] hover:bg-[rgba(239,159,39,0.1)] disabled:opacity-40 disabled:cursor-not-allowed transition-all"
                 >
                   {approving ? (
                     <span className="flex items-center justify-center gap-2">
                       <span className="w-3.5 h-3.5 border-2 border-[rgba(239,159,39,0.3)] border-t-[#ef9f27] rounded-full animate-spin" />
-                      Waiting for wallet…
+                      Sending USDC · waiting for confirmation…
                     </span>
-                  ) : description.trim() ? `Approve $${estimatedCost} USDC & Run →` : 'Enter a job description'}
+                  ) : description.trim() ? `Send $${estimatedCost} USDC & Run →` : 'Enter a job description'}
                 </button>
               ) : (
                 <button

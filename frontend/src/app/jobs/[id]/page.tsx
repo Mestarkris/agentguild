@@ -31,7 +31,7 @@ function truncateTx(tx: string) {
 function txLink(tx: string): string {
   if (!tx) return '';
   if (tx.startsWith('0x') && tx.length === 66) {
-    return `https://arc-explorer.thecanteenapp.com/tx/${tx}`;
+    return `https://testnet.arcscan.app/tx/${tx}`;
   }
   if (/^[0-9a-f-]{36}$/.test(tx)) {
     return `https://developer.circle.com/w3s/transactions/${tx}`;
@@ -488,7 +488,22 @@ export default function JobPage() {
         </div>
       )}
 
-      {/* ── Payment summary ── */}
+      {/* ── Buyer payment tx (buyer → platform) ── */}
+      {job.buyer_tx && (
+        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+          className="mb-4 rounded-xl border border-emerald-800/40 bg-emerald-950/30 px-4 py-3 flex items-center justify-between gap-3">
+          <div>
+            <div className="text-[10px] font-mono text-emerald-500/70 uppercase tracking-wider mb-0.5">Buyer → Platform · USDC on-chain</div>
+            <div className="text-xs font-mono text-emerald-400">{truncateTx(job.buyer_tx)}</div>
+          </div>
+          <a href={txLink(job.buyer_tx)} target="_blank" rel="noopener noreferrer"
+            className="text-[10px] font-mono text-emerald-500 hover:text-emerald-300 transition-colors shrink-0">
+            View on Arcscan ↗
+          </a>
+        </motion.div>
+      )}
+
+      {/* ── Payment summary (platform → agents) ── */}
       {job.total_price_usdc != null && subtasks.some(s => s.status === 'settled') && (
         <div className="mb-6">
           <PaymentSummary subtasks={subtasks} total={job.total_price_usdc} />
