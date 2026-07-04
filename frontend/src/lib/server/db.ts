@@ -248,7 +248,6 @@ export async function initSchema(): Promise<void> {
   ]) {
     try { db.exec(ddl); } catch { /* column already exists */ }
   }
-
-  _dirty = true;
-  scheduleFlush();
+  // Do NOT mark dirty here — schema init on an existing DB must not trigger a
+  // blob overwrite that would race against concurrent write lambdas.
 }
