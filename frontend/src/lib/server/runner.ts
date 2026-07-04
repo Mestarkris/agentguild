@@ -68,9 +68,21 @@ export async function runJob(jobId: string, description: string) {
   await exec('UPDATE jobs SET status = ?, total_price_usdc = ? WHERE id = ?', ['running', totalCost, jobId]);
 
   let prevResult = '';
+  let upstreamFailed = false;
   for (const { id: stId, agentId, st } of subtaskRows) {
     if (!agentId) {
-      await exec('UPDATE subtasks SET status = ?, result = ? WHERE id = ?', ['failed', 'No agent available', stId]);
+      await exec(
+        'UPDATE subtasks SET status = ?, result = ?, quality_score = ?, completed_at = ? WHERE id = ?',
+        ['failed', 'No agent available', 0.0, new Date().toISOString(), stId]
+      );
+      upstreamFailed = true;
+      continue;
+    }
+    if (upstreamFailed) {
+      await exec(
+        'UPDATE subtasks SET status = ?, result = ?, quality_score = ?, completed_at = ? WHERE id = ?',
+        ['skipped', 'Skipped (upstream failed)', 0.0, new Date().toISOString(), stId]
+      );
       continue;
     }
     await exec('UPDATE subtasks SET status = ?, started_at = ? WHERE id = ?', ['running', new Date().toISOString(), stId]);
@@ -86,7 +98,16 @@ export async function runJob(jobId: string, description: string) {
       );
       prevResult = result;
     } catch (err) {
-      await exec('UPDATE subtasks SET status = ?, result = ? WHERE id = ?', ['failed', (err as Error).message, stId]);
+      const msg = (err as Error).message ?? 'Unknown error';
+      // quality_score = 0.0 explicitly — default is 1.0 and failure must not inherit it
+      await exec(
+        'UPDATE subtasks SET status = ?, result = ?, quality_score = ?, completed_at = ? WHERE id = ?',
+        ['failed', msg, 0.0, new Date().toISOString(), stId]
+      );
+      // Exponential moving average with score 0 — drives avg_quality down on every failure
+      await exec('UPDATE agents SET avg_quality = MAX(0.1, avg_quality * 0.9) WHERE id = ?', [agentId]);
+      await slashAgent(agentId, jobId, msg.slice(0, 120));
+      upstreamFailed = true;
     }
   }
 
@@ -186,10 +207,16 @@ export async function runDirectJob(jobId: string, description: string, agentId: 
       [qualityScore, agentId]
     );
   } catch (err) {
-    await exec('UPDATE subtasks SET status = ?, result = ? WHERE id = ?', ['failed', (err as Error).message, stId]);
+    const msg = (err as Error).message ?? 'Unknown error';
+    await exec(
+      'UPDATE subtasks SET status = ?, result = ?, quality_score = ?, completed_at = ? WHERE id = ?',
+      ['failed', msg, 0.0, new Date().toISOString(), stId]
+    );
+    await exec('UPDATE agents SET avg_quality = MAX(0.1, avg_quality * 0.9) WHERE id = ?', [agentId]);
+    await slashAgent(agentId, jobId, msg.slice(0, 120));
     await exec(
       'UPDATE jobs SET status = ?, error = ?, completed_at = ? WHERE id = ?',
-      ['failed', (err as Error).message, new Date().toISOString(), jobId]
+      ['failed', msg, new Date().toISOString(), jobId]
     );
     await flushNow();
     return;

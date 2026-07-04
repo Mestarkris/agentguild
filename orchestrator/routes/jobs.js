@@ -8,6 +8,21 @@ const { settleJob } = require('../services/settlement');
 
 const router = express.Router();
 
+// Dedup cache: identical job descriptions within 5 minutes reuse the existing job.
+const JOB_DEDUP_TTL_MS = 5 * 60 * 1000;
+const dedupCache = new Map(); // description → { jobId, expiresAt }
+
+function getCachedJob(description) {
+  const entry = dedupCache.get(description);
+  if (!entry) return null;
+  if (Date.now() > entry.expiresAt) { dedupCache.delete(description); return null; }
+  return entry.jobId;
+}
+
+function setCachedJob(description, jobId) {
+  dedupCache.set(description, { jobId, expiresAt: Date.now() + JOB_DEDUP_TTL_MS });
+}
+
 const AGENT_URLS = {
   'summarizer':    process.env.AGENT_SUMMARIZER_URL    || 'http://localhost:4001',
   'code-review':   process.env.AGENT_CODE_REVIEW_URL   || 'http://localhost:4002',
@@ -80,12 +95,86 @@ router.get('/:id', (req, res) => {
   res.json({ ...job, subtasks });
 });
 
+// Direct-hire: skip the Planner, assign a single subtask straight to a named agent.
+router.post('/direct', async (req, res) => {
+  const { agentId, description } = req.body;
+  if (!agentId?.trim() || !description?.trim())
+    return res.status(400).json({ error: 'agentId and description required' });
+
+  const db = getDb();
+  const agent = db.prepare('SELECT * FROM agents WHERE id = ?').get(agentId);
+  if (!agent) return res.status(404).json({ error: `Agent ${agentId} not found` });
+
+  const jobId = uuidv4();
+  db.prepare(`INSERT INTO jobs (id, description, status) VALUES (?, ?, 'pending')`).run(jobId, description);
+  res.json({ jobId, status: 'pending', agentId, message: 'Direct job accepted' });
+
+  runDirectJob(jobId, agent, description).catch(err => {
+    console.error(`[DirectJob ${jobId}] Fatal:`, err.message);
+    db.prepare(`UPDATE jobs SET status = 'failed', error = ? WHERE id = ?`).run(err.message, jobId);
+  });
+});
+
+async function runDirectJob(jobId, agent, description) {
+  const db = getDb();
+  const stId = uuidv4();
+
+  db.prepare(`UPDATE jobs SET status = 'running', total_price_usdc = ? WHERE id = ?`)
+    .run(agent.price_usdc, jobId);
+  db.prepare(`
+    INSERT INTO subtasks (id, job_id, agent_id, skill, prompt, complexity_weight, position, status)
+    VALUES (?, ?, ?, ?, ?, 1.0, 1, 'pending')
+  `).run(stId, jobId, agent.id, agent.skill, description);
+  db.prepare(`UPDATE subtasks SET status = 'running', started_at = datetime('now') WHERE id = ?`).run(stId);
+
+  try {
+    const agentUrl = AGENT_URLS[agent.skill];
+    if (!agentUrl) throw new Error(`No URL configured for skill: ${agent.skill}`);
+
+    const resp = await axios.post(`${agentUrl}/run`, { prompt: description }, {
+      headers: { 'X-Payment': `USDC ${agent.price_usdc} demo demo` },
+      timeout: 12000,
+    });
+
+    const { result, tokensUsed = 100, qualityScore = 1.0 } = resp.data;
+    db.prepare(`
+      UPDATE subtasks SET status = 'completed', result = ?, tokens_used = ?, quality_score = ?,
+      completed_at = datetime('now') WHERE id = ?
+    `).run(result, tokensUsed, qualityScore, stId);
+
+    const { updateQuality } = require('../services/reputation');
+    updateQuality(agent.id, qualityScore);
+  } catch (err) {
+    console.error(`[DirectJob ${jobId}] Subtask failed:`, err.message);
+    db.prepare(`UPDATE subtasks SET status = 'failed', result = ?, quality_score = 0 WHERE id = ?`)
+      .run(err.message, stId);
+    const { updateQuality, slashAgent } = require('../services/reputation');
+    updateQuality(agent.id, 0);
+    slashAgent(agent.id, jobId, `Direct subtask failed: ${err.message.slice(0, 120)}`);
+  }
+
+  db.prepare(`UPDATE jobs SET status = 'settling' WHERE id = ?`).run(jobId);
+  try {
+    await settleJob(jobId, agent.price_usdc);
+  } catch (err) {
+    console.error(`[DirectJob ${jobId}] Settlement failed:`, err.message);
+  }
+  db.prepare(`UPDATE jobs SET status = 'completed', completed_at = datetime('now') WHERE id = ?`).run(jobId);
+}
+
 router.post('/', async (req, res) => {
   const { description } = req.body;
   if (!description?.trim()) return res.status(400).json({ error: 'description required' });
 
+  const cached = getCachedJob(description.trim());
+  if (cached) {
+    console.log(`[Jobs] Dedup hit for "${description.slice(0, 60)}" → reusing ${cached}`);
+    return res.json({ jobId: cached, status: 'dedup', message: 'Identical job submitted recently — returning existing job.' });
+  }
+
   const db = getDb();
   const jobId = uuidv4();
+  setCachedJob(description.trim(), jobId);
 
   db.prepare(`INSERT INTO jobs (id, description, status) VALUES (?, ?, 'pending')`).run(jobId, description);
 
@@ -138,11 +227,18 @@ async function runJob(jobId, description) {
   const totalCost = estimateJobCost(plan.subtasks, availableAgents);
   db.prepare(`UPDATE jobs SET status = 'running', total_price_usdc = ? WHERE id = ?`).run(totalCost, jobId);
 
-  // Phase 1/3: Execute subtasks in order
+  // Phase 1/3: Execute subtasks in order — stop the pipeline on first failure
   let prevResult = '';
+  let upstreamFailed = false;
   for (const { id: stId, agent, st } of subtaskIds) {
+    if (upstreamFailed) {
+      db.prepare(`UPDATE subtasks SET status = 'skipped', result = 'Skipped (upstream failed)' WHERE id = ?`).run(stId);
+      continue;
+    }
+
     if (!agent) {
       db.prepare(`UPDATE subtasks SET status = 'failed', result = 'No agent available' WHERE id = ?`).run(stId);
+      upstreamFailed = true;
       continue;
     }
 
@@ -153,7 +249,7 @@ async function runJob(jobId, description) {
       const payload = { prompt: st.prompt, context: prevResult };
       const resp = await axios.post(`${agentUrl}/run`, payload, {
         headers: { 'X-Payment': `USDC ${agent.price_usdc * st.complexity_weight} demo demo` },
-        timeout: 60000,
+        timeout: 12000,
       });
 
       const { result, tokensUsed = 100, qualityScore = 1.0 } = resp.data;
@@ -167,8 +263,14 @@ async function runJob(jobId, description) {
       prevResult = result;
     } catch (err) {
       console.error(`[Job ${jobId}] Subtask ${stId} failed:`, err.message);
-      db.prepare(`UPDATE subtasks SET status = 'failed', result = ? WHERE id = ?`)
+      db.prepare(`UPDATE subtasks SET status = 'failed', result = ?, quality_score = 0 WHERE id = ?`)
         .run(err.message, stId);
+      if (agent) {
+        const { updateQuality, slashAgent } = require('../services/reputation');
+        updateQuality(agent.id, 0);
+        slashAgent(agent.id, jobId, `Subtask failed: ${err.message.slice(0, 120)}`);
+      }
+      upstreamFailed = true;
     }
   }
 

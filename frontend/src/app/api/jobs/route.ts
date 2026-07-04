@@ -8,6 +8,10 @@ import { runJob } from '@/lib/server/runner';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
 
+// 5-minute dedup cache — prevents repeated test clicks from burning tokens on identical jobs
+const DEDUP_TTL_MS = 5 * 60 * 1000;
+const dedupCache = new Map<string, { jobId: string; ts: number }>();
+
 export async function GET(req: NextRequest) {
   try {
     await reloadFromBlob(); // Sync from blob so warm lambdas show latest jobs
@@ -46,7 +50,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'description required' }, { status: 400 });
     }
 
+    const dedupKey = description.trim();
+    const cached = dedupCache.get(dedupKey);
+    if (cached && Date.now() - cached.ts < DEDUP_TTL_MS) {
+      console.log(`[Jobs POST] Dedup hit — returning existing jobId ${cached.jobId} for identical description`);
+      return NextResponse.json({ jobId: cached.jobId, status: 'pending', message: 'Duplicate request — returning existing job', dedup: true });
+    }
+
     const jobId = uuidv4();
+    dedupCache.set(dedupKey, { jobId, ts: Date.now() });
     console.log(`[Job ${jobId}] Creating — payer: ${payer_address ?? 'none'} buyer_tx: ${buyer_tx ?? 'none'}`);
 
     await exec(

@@ -2,6 +2,7 @@ import { chatComplete } from './llm';
 
 interface AgentDef {
   skill: string;
+  maxTokens: number;
   system: string;
   buildPrompt: (prompt: string, context: string) => string;
 }
@@ -9,61 +10,73 @@ interface AgentDef {
 const AGENT_DEFS: AgentDef[] = [
   {
     skill: 'summarizer',
+    maxTokens: 384,
     system: 'You are a precise summarization agent. Summarize text concisely, preserving key facts, numbers, and conclusions. Respond with the summary only — no preamble.',
     buildPrompt: (p, ctx) => ctx ? `Previous context:\n${ctx}\n\nSummarize:\n${p}` : `Summarize:\n${p}`,
   },
   {
     skill: 'code-review',
+    maxTokens: 768,
     system: 'You are a senior code reviewer. Identify bugs, security issues, and style improvements. Format as numbered findings with severity (critical/major/minor), description, and suggested fix.',
     buildPrompt: (p, ctx) => ctx ? `${p}\n\nCode to review:\n${ctx}` : p,
   },
   {
     skill: 'research',
+    maxTokens: 1024,
     system: 'You are a thorough research agent. Provide a detailed report with: Overview, Key Findings, Data Points, Conclusion. Use [Source: <description>] for citations.',
     buildPrompt: (p, ctx) => ctx ? `${p}\n\nBackground:\n${ctx}` : p,
   },
   {
     skill: 'translate',
+    maxTokens: 512,
     system: 'You are a professional multilingual translation agent. Detect source language and translate accurately, preserving tone and formatting. If target language is specified in brackets like [to: Spanish], use it. Respond with only the translated text.',
     buildPrompt: (p, ctx) => ctx ? `${p}\n\nText:\n${ctx}` : p,
   },
   {
     skill: 'sentiment',
+    maxTokens: 256,
     system: 'You are a sentiment analysis agent. Output JSON: { "overall": "positive|negative|neutral", "score": <-1.0 to 1.0>, "emotions": [...], "confidence": <0-1>, "reasoning": "..." }. Respond with valid JSON only.',
     buildPrompt: (p, ctx) => ctx ? `Analyze sentiment of:\n${ctx}` : `Analyze sentiment of:\n${p}`,
   },
   {
     skill: 'sql',
+    maxTokens: 384,
     system: 'You are a SQL generation agent. Convert natural language to valid PostgreSQL. Respond with: 1) The SQL query in a code block, 2) Brief explanation, 3) Assumptions made.',
     buildPrompt: (p, ctx) => ctx ? `Schema context:\n${ctx}\n\nGenerate SQL for:\n${p}` : `Generate SQL for:\n${p}`,
   },
   {
     skill: 'chart',
+    maxTokens: 512,
     system: 'You are a data visualization agent. Convert data descriptions into Chart.js config JSON. Output only valid JSON that can be passed directly to Chart.js. Choose the most appropriate chart type.',
     buildPrompt: (p, ctx) => ctx ? `Data context:\n${ctx}\n\nCreate chart for:\n${p}` : `Create chart for:\n${p}`,
   },
   {
     skill: 'extract',
+    maxTokens: 512,
     system: 'You are a structured data extraction agent. Extract entities, dates, numbers, and key-value pairs from text. Output valid JSON with all extracted data.',
     buildPrompt: (p, ctx) => ctx ? `${p}\n\nSource text:\n${ctx}` : p,
   },
   {
     skill: 'legal-review',
+    maxTokens: 768,
     system: 'You are a legal document review agent (informational only, not legal advice). Identify risky clauses: unlimited liability, one-sided termination, IP assignment, non-compete, auto-renewal. For each risk: clause text (quoted), risk type, severity (high/medium/low), plain-English explanation.',
     buildPrompt: (p, ctx) => ctx ? `Review for risky clauses:\n\n${ctx}` : `Review for risky clauses:\n\n${p}`,
   },
   {
     skill: 'finance',
+    maxTokens: 768,
     system: 'You are a financial analysis agent. Compute relevant ratios and produce: Executive Summary, Key Metrics (table), Risk Factors, Recommendation.',
     buildPrompt: (p, ctx) => ctx ? `Prior research:\n${ctx}\n\nAnalysis task:\n${p}` : p,
   },
   {
     skill: 'transcribe',
+    maxTokens: 512,
     system: 'You are a transcription agent. Clean up and format transcripts with speaker labels (Speaker A:, Speaker B:) where applicable. Remove filler words.',
     buildPrompt: (p, ctx) => ctx ? `Process:\n${p}\n\nContent:\n${ctx}` : `Process:\n${p}`,
   },
   {
     skill: 'fact-check',
+    maxTokens: 512,
     system: 'You are a fact-checking agent. For each claim, evaluate based on your knowledge. Output a JSON array: [{ "claim": "...", "verdict": "true|false|partially-true|unverifiable", "confidence": <0-1>, "explanation": "...", "caveats": "..." }]',
     buildPrompt: (p, ctx) => ctx ? `Fact-check:\n${p}\n\nSource material:\n${ctx}` : `Fact-check:\n${p}`,
   },
@@ -116,7 +129,7 @@ export async function runAgentInline(
   const { text: result, servedBy, tokensUsed } = await chatComplete({
     system: def.system,
     messages: [{ role: 'user', content: userMessage }],
-    maxTokens: 1024,
+    maxTokens: def.maxTokens,
     label: skill,
   });
 

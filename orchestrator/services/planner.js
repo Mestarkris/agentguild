@@ -14,7 +14,7 @@ async function decomposeJob(jobDescription, availableAgents) {
   try {
     const { text, servedBy } = await chatComplete({
       callerLabel: 'Planner',
-      max_tokens: 1024,
+      max_tokens: 512,
       messages: [{
         role: 'user',
         content: `You are AgentGuild's job planner. Decompose the following job into an ordered list of subtasks, assigning each to the best-fit agent skill from the available list.

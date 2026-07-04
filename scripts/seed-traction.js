@@ -9,6 +9,17 @@ const BASE_URL = process.argv.includes('--base-url')
   ? process.argv[process.argv.indexOf('--base-url') + 1]
   : 'http://localhost:3000';
 
+// Minimum ms between job submissions — spreads Groq token bursts across the
+// per-minute rate-limit window even if a previous job finishes very quickly.
+const PACE_MS = 2000;
+let lastSubmitAt = 0;
+
+async function paceSubmit() {
+  const wait = PACE_MS - (Date.now() - lastSubmitAt);
+  if (wait > 0) await sleep(wait);
+  lastSubmitAt = Date.now();
+}
+
 async function post(path, body) {
   const res = await fetch(`${BASE_URL}${path}`, {
     method: 'POST',
@@ -28,7 +39,7 @@ async function get(path) {
   return res.json();
 }
 
-async function waitForJob(jobId, maxWaitMs = 45000) {
+async function waitForJob(jobId, maxWaitMs = 120000) {
   const start = Date.now();
   while (Date.now() - start < maxWaitMs) {
     await sleep(2500);
@@ -189,6 +200,7 @@ async function main() {
     const label = `[${i + 1}/${DIRECT_JOBS.length}] direct·${job.skill}`;
 
     try {
+      await paceSubmit();
       process.stdout.write(`${label} … `);
       const { jobId } = await post('/api/jobs/direct', {
         agentId,
@@ -196,6 +208,11 @@ async function main() {
         payer_address: '0xSEED_WALLET',
       });
       const result = await waitForJob(jobId);
+      if (result === null) {
+        console.warn(`  ⚠ timeout — job still running on server; waiting 8s before next submission`);
+        await sleep(8000);
+        lastSubmitAt = Date.now();
+      }
       if (result?.status === 'completed') {
         completed++;
         const usdc = result.total_price_usdc?.toFixed(5) ?? '?';
@@ -225,12 +242,18 @@ async function main() {
     const label = `[${i + 1}/${AUTO_JOBS.length}] auto`;
 
     try {
+      await paceSubmit();
       process.stdout.write(`${label} "${preview}…" → `);
       const { jobId } = await post('/api/jobs', {
         description: job.description,
         payer_address: '0xSEED_WALLET',
       });
-      const result = await waitForJob(jobId, 60000);
+      const result = await waitForJob(jobId, 180000);
+      if (result === null) {
+        console.warn(`  ⚠ timeout — job still running on server; waiting 8s before next submission`);
+        await sleep(8000);
+        lastSubmitAt = Date.now();
+      }
       if (result?.status === 'completed') {
         completed++;
         const usdc = result.total_price_usdc?.toFixed(5) ?? '?';

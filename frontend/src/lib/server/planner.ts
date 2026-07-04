@@ -27,7 +27,7 @@ export async function decomposeJob(description: string, agents: AgentRow[]): Pro
 
   try {
     const { text, servedBy } = await chatComplete({
-      maxTokens: 1024,
+      maxTokens: 512,
       label: 'Planner',
       messages: [{
         role: 'user',
