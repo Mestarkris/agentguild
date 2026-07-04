@@ -100,8 +100,50 @@ async function openDb(): Promise<SqlJsDatabase> {
   } else {
     db = new (SqlJs as any).Database();
   }
+  // Set _db before schema init so getDb() doesn't recurse via _dbPromise
   _db = db;
+  // Always ensure schema exists — safe on existing DBs (all CREATE IF NOT EXISTS)
+  await ensureSchema(db);
   return db;
+}
+
+function ensureSchema(db: SqlJsDatabase): Promise<void> {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS agents (
+      id TEXT PRIMARY KEY, name TEXT NOT NULL, skill TEXT NOT NULL, description TEXT,
+      price_usdc REAL NOT NULL, price_unit TEXT NOT NULL, wallet_id TEXT, wallet_address TEXT,
+      bond_amount REAL DEFAULT 0.1, bond_slashed REAL DEFAULT 0, status TEXT DEFAULT 'available',
+      base_url TEXT NOT NULL, total_jobs INTEGER DEFAULT 0, total_earned REAL DEFAULT 0,
+      avg_quality REAL DEFAULT 1.0, registered_at TEXT DEFAULT (datetime('now')), last_active TEXT
+    );
+    CREATE TABLE IF NOT EXISTS jobs (
+      id TEXT PRIMARY KEY, description TEXT NOT NULL, status TEXT DEFAULT 'pending',
+      total_price_usdc REAL, escrow_tx TEXT, result TEXT, error TEXT,
+      submitted_at TEXT DEFAULT (datetime('now')), completed_at TEXT
+    );
+    CREATE TABLE IF NOT EXISTS subtasks (
+      id TEXT PRIMARY KEY, job_id TEXT NOT NULL, agent_id TEXT, skill TEXT NOT NULL,
+      prompt TEXT NOT NULL, result TEXT, tokens_used INTEGER DEFAULT 0,
+      complexity_weight REAL DEFAULT 1.0, quality_score REAL DEFAULT 1.0,
+      contribution_pct REAL, payment_usdc REAL, payment_tx TEXT,
+      status TEXT DEFAULT 'pending', position INTEGER, started_at TEXT, completed_at TEXT
+    );
+    CREATE TABLE IF NOT EXISTS transactions (
+      id TEXT PRIMARY KEY, job_id TEXT, agent_id TEXT, amount_usdc REAL,
+      tx_hash TEXT, demo INTEGER DEFAULT 0, created_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE TABLE IF NOT EXISTS bond_slashes (
+      id TEXT PRIMARY KEY, agent_id TEXT NOT NULL, job_id TEXT,
+      slash_amount REAL, reason TEXT, created_at TEXT DEFAULT (datetime('now'))
+    );
+  `);
+  for (const ddl of [
+    "ALTER TABLE jobs ADD COLUMN job_type TEXT DEFAULT 'auto'",
+    'ALTER TABLE jobs ADD COLUMN direct_agent_id TEXT',
+  ]) {
+    try { db.exec(ddl); } catch { /* column already exists */ }
+  }
+  return Promise.resolve();
 }
 
 export async function getDb(): Promise<SqlJsDatabase> {
