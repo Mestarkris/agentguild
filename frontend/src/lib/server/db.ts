@@ -16,9 +16,17 @@ type SqlJsDatabase = {
 
 let _db: SqlJsDatabase | null = null;
 let _dbPromise: Promise<SqlJsDatabase> | null = null;
+let _SqlJs: any = null; // cached WASM instance — one per lambda lifetime
 let _dirty = false;
 let _saveTimer: ReturnType<typeof setTimeout> | null = null;
 let _blobUrl: string | null = null;
+
+async function getSqlJs(): Promise<any> {
+  if (_SqlJs) return _SqlJs;
+  const initSql = require('sql.js/dist/sql-asm.js');
+  _SqlJs = await initSql.default();
+  return _SqlJs;
+}
 
 // Derive the Vercel Blob private URL from the token (no API round-trip needed).
 // Token format: vercel_blob_rw_<storeId>_<secret>
@@ -78,8 +86,7 @@ function scheduleFlush() {
 }
 
 async function openDb(): Promise<SqlJsDatabase> {
-  const initSql = require('sql.js/dist/sql-asm.js');
-  const SqlJs = await initSql.default();
+  const SqlJs = await getSqlJs();
 
   let data: Buffer | null = null;
   if (IS_VERCEL) {
@@ -91,14 +98,14 @@ async function openDb(): Promise<SqlJsDatabase> {
   let db: SqlJsDatabase;
   if (data) {
     try {
-      db = new (SqlJs as any).Database(new Uint8Array(data));
+      db = new SqlJs.Database(new Uint8Array(data));
     } catch {
       // Blob is corrupt — start fresh and nuke the bad blob
       console.error('[DB] Blob corrupt, resetting to fresh database');
-      db = new (SqlJs as any).Database();
+      db = new SqlJs.Database();
     }
   } else {
-    db = new (SqlJs as any).Database();
+    db = new SqlJs.Database();
   }
   // Set _db before schema init so getDb() doesn't recurse via _dbPromise
   _db = db;
@@ -179,10 +186,8 @@ export async function reloadFromBlob(): Promise<void> {
   try {
     const data = await loadFromBlob();
     if (!data) return;
-    const initSql = require('sql.js/dist/sql-asm.js');
-    const SqlJs = await initSql.default();
-    /* eslint-disable @typescript-eslint/no-explicit-any */
-    const db = new (SqlJs as any).Database(new Uint8Array(data));
+    const SqlJs = await getSqlJs();
+    const db = new SqlJs.Database(new Uint8Array(data));
     await ensureSchema(db);
     _db = db;
     _dbPromise = null;
