@@ -53,7 +53,7 @@ Return ONLY valid JSON (no markdown) matching this schema exactly:
 
 Rules:
 - Use only skills from: ${SKILLS.join(', ')}
-- 2-6 subtasks maximum
+- 1-5 subtasks. Use exactly 1 subtask if a single agent can fully handle the job.
 - complexity_weight: 0.5=trivial, 1.0=normal, 2.0=hard, 3.0=expert
 - prompts must be specific and actionable
 - order so each builds on the previous`,

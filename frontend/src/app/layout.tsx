@@ -16,12 +16,18 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
+  const mockMode = process.env.MOCK_MODE === 'true';
   return (
     <html lang="en" className={jetbrainsMono.variable}>
       <body className="min-h-screen bg-[#050508] text-white antialiased">
         <Providers>
           <Nav />
-          <main className="pt-14">{children}</main>
+          {mockMode && (
+            <div className="fixed top-14 left-0 right-0 z-40 bg-amber-400 text-black text-[11px] font-mono font-bold text-center py-1 tracking-widest">
+              ⚠ MOCK MODE ACTIVE — zero real API calls · set MOCK_MODE=false to disable
+            </div>
+          )}
+          <main className={mockMode ? 'pt-20' : 'pt-14'}>{children}</main>
         </Providers>
       </body>
     </html>

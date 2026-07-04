@@ -97,6 +97,11 @@ export async function runJob(jobId: string, description: string) {
         [qualityScore, agentId]
       );
       prevResult = result;
+      // Pace between subtasks to avoid back-to-back calls hitting the same per-minute rate limit.
+      // Skip in mock mode — no point adding latency to instant canned responses.
+      if (process.env.MOCK_MODE !== 'true') {
+        await new Promise<void>(r => setTimeout(r, 1500));
+      }
     } catch (err) {
       const msg = (err as Error).message ?? 'Unknown error';
       // quality_score = 0.0 explicitly — default is 1.0 and failure must not inherit it
