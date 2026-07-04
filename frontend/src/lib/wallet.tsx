@@ -6,7 +6,7 @@ import {
 import { AnimatePresence, motion } from 'framer-motion';
 
 // ── Arc Testnet constants ─────────────────────────────────────────────────────
-const ARC_CHAIN_ID    = '0x4CEF52';           // 5042002 decimal
+const ARC_CHAIN_ID    = '0x4cef52';           // 5042002 decimal — lowercase matches eth_chainId response
 const ARC_RPC_URL     = 'https://testnet.arcscan.app/api/eth-rpc';
 const ARC_EXPLORER    = 'https://testnet.arcscan.app';
 const USDC_CONTRACT   = '0x3600000000000000000000000000000000000000';
@@ -213,24 +213,43 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
   // ── STEP 2: switch / add Arc Testnet ────────────────────────────────────────
   // Triggered only when the user explicitly clicks "Add / Switch Arc Testnet".
+  //
+  // EIP-3085 flow:
+  //   1. wallet_switchEthereumChain — works if Arc is already in the wallet.
+  //   2. 4902 (chain not recognized) → wallet_addEthereumChain with full params.
+  //      After wallet_addEthereumChain succeeds the chain is added AND active — no
+  //      second switch call needed.
+  //   3. 4001 on switch = user rejected switch (different from "chain not found").
+  //   4. 4001 on add   = user rejected the add popup.
+  //   Other errors fall through to the generic message.
   async function doSwitchNetwork(p: DetectedProvider, addr: string) {
+    // Normalize a wallet error's code field to a number regardless of whether
+    // the wallet emits it as a number (standard) or a string (some builds do).
+    function errCode(e: unknown): number | undefined {
+      const raw = (e as { code?: unknown })?.code;
+      if (typeof raw === 'number') return raw;
+      if (typeof raw === 'string') { const n = parseInt(raw, 10); return isNaN(n) ? undefined : n; }
+      return undefined;
+    }
+
     setStep({ kind: 'switching', p, addr, adding: false });
     try {
       await p.raw.request({
         method: 'wallet_switchEthereumChain',
         params: [{ chainId: ARC_CHAIN_ID }],
       });
-      setStep({ kind: 'idle' });                       // success — network modal closes
+      setStep({ kind: 'idle' });                       // already on Arc — done
     } catch (err: unknown) {
-      const code = (err as { code?: number })?.code;
+      const code = errCode(err);
       if (code === 4902) {
-        // Chain not in wallet yet — add it
+        // Chain not yet in wallet — add it.
+        // wallet_addEthereumChain both adds the chain AND switches to it in one call.
         setStep({ kind: 'switching', p, addr, adding: true });
         try {
           await p.raw.request({ method: 'wallet_addEthereumChain', params: [ARC_CHAIN_PARAMS] });
           setStep({ kind: 'idle' });
         } catch (addErr: unknown) {
-          const addCode = (addErr as { code?: number })?.code;
+          const addCode = errCode(addErr);
           const msg = addCode === 4001
             ? 'You declined adding Arc Testnet — please approve to continue.'
             : ((addErr as Error)?.message ?? 'Could not add Arc Testnet.');
@@ -239,7 +258,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       } else if (code === 4001) {
         setStep({
           kind: 'net-failed', p, addr,
-          message: 'You declined the network switch — please approve Arc Testnet to continue.',
+          message: 'You declined the network switch — approve Arc Testnet to continue.',
         });
       } else {
         setStep({
