@@ -15,6 +15,14 @@ const PLATFORM_WALLET = '0x893f3990a22dfe234893d46a876375191f51d3c4';
 const ERC20_TRANSFER_SELECTOR = 'a9059cbb';
 const TRANSFER_GAS    = '0x186A0';
 
+const ARC_CHAIN_PARAMS = {
+  chainId: ARC_CHAIN_ID,
+  chainName: 'Arc Testnet',
+  rpcUrls: [ARC_RPC_URL],
+  nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 },
+  blockExplorerUrls: [ARC_EXPLORER],
+};
+
 // ── Provider types ────────────────────────────────────────────────────────────
 interface RawProvider {
   isMetaMask?: boolean;
@@ -40,23 +48,30 @@ declare global {
   interface Window { ethereum?: RawProvider; }
 }
 
-// ── Connect step state machine ────────────────────────────────────────────────
+// ── Step 1 state: wallet selection + eth_requestAccounts ──────────────────────
+// Step 2 state: chain check + wallet_switchEthereumChain / wallet_addEthereumChain
+//
+// The two steps are kept strictly separate: step 1 finishes (address in nav,
+// connecting modal closed) BEFORE step 2 starts (network modal opens).
 type Step =
+  // step 1
   | { kind: 'idle' }
-  | { kind: 'picking';   list: DetectedProvider[] }
-  | { kind: 'connecting'; p: DetectedProvider }
-  | { kind: 'switching';  p: DetectedProvider; adding: boolean }
-  | { kind: 'conn-rejected' }
-  | { kind: 'net-rejected'; p: DetectedProvider };
+  | { kind: 'picking';        list: DetectedProvider[] }
+  | { kind: 'connecting';     p: DetectedProvider }
+  | { kind: 'conn-failed';    message: string }        // auto-dismisses
+  // step 2 (only after address is set)
+  | { kind: 'need-network';   p: DetectedProvider; addr: string }
+  | { kind: 'switching';      p: DetectedProvider; addr: string; adding: boolean }
+  | { kind: 'net-failed';     p: DetectedProvider; addr: string; message: string };
 
 // ── Wallet context ────────────────────────────────────────────────────────────
 interface WalletState {
-  address:      string | null;
-  balance:      string | null;
-  connecting:   boolean;
-  connect:      () => void;
-  disconnect:   () => void;
-  sendPayment:  (amountUsdc: string, description: string) => Promise<string>;
+  address:        string | null;
+  balance:        string | null;
+  connecting:     boolean;
+  connect:        () => void;
+  disconnect:     () => void;
+  sendPayment:    (amountUsdc: string, description: string) => Promise<string>;
   refreshBalance: () => Promise<void>;
 }
 
@@ -70,7 +85,7 @@ const WalletCtx = createContext<WalletState>({
 
 // ── Provider detection ────────────────────────────────────────────────────────
 function providerMeta(p: RawProvider): { id: string; name: string; icon: string } {
-  // isRabby must come before isMetaMask — Rabby sets both flags for compat
+  // isRabby must precede isMetaMask: Rabby sets isMetaMask=true for compat
   if (p.isRabby)          return { id: 'rabby',    name: 'Rabby',           icon: '🐰' };
   if (p.isCoinbaseWallet) return { id: 'coinbase', name: 'Coinbase Wallet',  icon: '🔵' };
   if (p.isBraveWallet)    return { id: 'brave',    name: 'Brave Wallet',     icon: '🦁' };
@@ -83,8 +98,7 @@ function providerMeta(p: RawProvider): { id: string; name: string; icon: string 
 function detectProviders(): DetectedProvider[] {
   if (typeof window === 'undefined' || !window.ethereum) return [];
   const eth = window.ethereum;
-  // EIP-5749: multi-provider array present when several extensions coexist
-  const raw: RawProvider[] = eth.providers?.length ? eth.providers : [eth];
+  const raw = eth.providers?.length ? eth.providers : [eth];
   const seen = new Set<string>();
   const out: DetectedProvider[] = [];
   for (const p of raw) {
@@ -94,7 +108,7 @@ function detectProviders(): DetectedProvider[] {
   return out;
 }
 
-// ── Chain helpers (direct Blockscout — not MetaMask's configured RPC) ─────────
+// ── Chain helpers ─────────────────────────────────────────────────────────────
 async function arcRpc<T>(method: string, params: unknown[]): Promise<T> {
   const res = await fetch(ARC_RPC_URL, {
     method: 'POST',
@@ -134,14 +148,6 @@ function encodeTransfer(to: string, amountUsdc: string): string {
     + raw.toString(16).padStart(64, '0');
 }
 
-const ARC_CHAIN_PARAMS = {
-  chainId: ARC_CHAIN_ID,
-  chainName: 'Arc Testnet',
-  rpcUrls: [ARC_RPC_URL],
-  nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 },
-  blockExplorerUrls: [ARC_EXPLORER],
-};
-
 // ── WalletProvider ────────────────────────────────────────────────────────────
 export function WalletProvider({ children }: { children: ReactNode }) {
   const [address,        setAddress]        = useState<string | null>(null);
@@ -149,9 +155,10 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   const [activeProvider, setActiveProvider] = useState<RawProvider | null>(null);
   const [step,           setStep]           = useState<Step>({ kind: 'idle' });
 
+  // connecting = true only during actual wallet-blocking waits (spinner states)
   const connecting = step.kind === 'connecting' || step.kind === 'switching';
 
-  // ── balance refresh ─────────────────────────────────────────────────────────
+  // ── helpers ─────────────────────────────────────────────────────────────────
   const refreshBalance = useCallback(async (addr?: string) => {
     const a = addr ?? address;
     if (!a) return;
@@ -159,82 +166,101 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     catch { setBalance('0.0000'); }
   }, [address]);
 
-  // ── finalize: called once address + chain are confirmed ────────────────────
-  const finalize = useCallback(async (p: DetectedProvider, addr: string) => {
-    setActiveProvider(p.raw);
-    setAddress(addr);
-    setStep({ kind: 'idle' });
-    try { setBalance(await readUsdcBalance(addr)); }
-    catch { setBalance('0.0000'); }
-  }, []);
+  function showConnFailed(message: string) {
+    setStep({ kind: 'conn-failed', message });
+    setTimeout(() => setStep({ kind: 'idle' }), 2500);
+  }
 
-  // ── network switch / add (shared between initial connect and retry) ─────────
-  const doSwitchNetwork = useCallback(async (p: DetectedProvider, addr: string) => {
-    setStep({ kind: 'switching', p, adding: false });
+  // ── STEP 1: request accounts from the chosen provider ───────────────────────
+  // Completes fully (address in nav, modal closed) before step 2 starts.
+  async function doConnect(p: DetectedProvider) {
+    setStep({ kind: 'connecting', p });
+    let addr: string;
+    try {
+      const accounts = await p.raw.request<string[]>({ method: 'eth_requestAccounts' });
+      addr = accounts?.[0] ?? '';
+      if (!addr) { setStep({ kind: 'idle' }); return; }
+    } catch (err: unknown) {
+      const code = (err as { code?: number })?.code;
+      if (code === 4001) {
+        showConnFailed('Connection cancelled — you declined the request.');
+      } else if (code === -32002) {
+        showConnFailed('A connection request is already pending — check your wallet.');
+      } else {
+        showConnFailed((err as Error)?.message ?? 'Connection failed.');
+      }
+      return;
+    }
+
+    // ── Step 1 is done. Set address immediately so nav updates. ────────────────
+    setAddress(addr);
+    setActiveProvider(p.raw);
+    setStep({ kind: 'idle' });                         // connecting modal closes here
+    readUsdcBalance(addr).then(setBalance).catch(() => setBalance('0.0000'));
+
+    // ── Step 2: check chain ID (fast async, no loading state needed) ───────────
+    // If already on Arc, nothing more to do. If not, show the network modal.
+    try {
+      const chainId = await p.raw.request<string>({ method: 'eth_chainId' });
+      if (chainId?.toLowerCase() !== ARC_CHAIN_ID.toLowerCase()) {
+        setStep({ kind: 'need-network', p, addr });    // network modal opens here
+      }
+      // else: already on Arc — fully done, no further modal
+    } catch {
+      // chain-ID check failed — silently ignore, user can dismiss manually if needed
+    }
+  }
+
+  // ── STEP 2: switch / add Arc Testnet ────────────────────────────────────────
+  // Triggered only when the user explicitly clicks "Add / Switch Arc Testnet".
+  async function doSwitchNetwork(p: DetectedProvider, addr: string) {
+    setStep({ kind: 'switching', p, addr, adding: false });
     try {
       await p.raw.request({
         method: 'wallet_switchEthereumChain',
         params: [{ chainId: ARC_CHAIN_ID }],
       });
-      await finalize(p, addr);
+      setStep({ kind: 'idle' });                       // success — network modal closes
     } catch (err: unknown) {
       const code = (err as { code?: number })?.code;
       if (code === 4902) {
-        setStep({ kind: 'switching', p, adding: true });
+        // Chain not in wallet yet — add it
+        setStep({ kind: 'switching', p, addr, adding: true });
         try {
           await p.raw.request({ method: 'wallet_addEthereumChain', params: [ARC_CHAIN_PARAMS] });
-          await finalize(p, addr);
-        } catch {
-          setStep({ kind: 'net-rejected', p });
+          setStep({ kind: 'idle' });
+        } catch (addErr: unknown) {
+          const addCode = (addErr as { code?: number })?.code;
+          const msg = addCode === 4001
+            ? 'You declined adding Arc Testnet — please approve to continue.'
+            : ((addErr as Error)?.message ?? 'Could not add Arc Testnet.');
+          setStep({ kind: 'net-failed', p, addr, message: msg });
         }
+      } else if (code === 4001) {
+        setStep({
+          kind: 'net-failed', p, addr,
+          message: 'You declined the network switch — please approve Arc Testnet to continue.',
+        });
       } else {
-        setStep({ kind: 'net-rejected', p });
+        setStep({
+          kind: 'net-failed', p, addr,
+          message: (err as Error)?.message ?? 'Network switch failed.',
+        });
       }
     }
-  }, [finalize]);
-
-  // ── doConnect: request accounts then switch network ─────────────────────────
-  const doConnect = useCallback(async (p: DetectedProvider) => {
-    setStep({ kind: 'connecting', p });
-    try {
-      const accounts = await p.raw.request<string[]>({ method: 'eth_requestAccounts' });
-      const addr = accounts?.[0];
-      if (!addr) { setStep({ kind: 'idle' }); return; }
-
-      const chainId = await p.raw.request<string>({ method: 'eth_chainId' });
-      if (chainId?.toLowerCase() === ARC_CHAIN_ID.toLowerCase()) {
-        await finalize(p, addr);
-      } else {
-        await doSwitchNetwork(p, addr);
-      }
-    } catch (err: unknown) {
-      const code = (err as { code?: number })?.code;
-      if (code === 4001 || code === -32002) {
-        setStep({ kind: 'conn-rejected' });
-        setTimeout(() => setStep({ kind: 'idle' }), 2200);
-      } else {
-        setStep({ kind: 'idle' });
-      }
-    }
-  }, [finalize, doSwitchNetwork]);
+  }
 
   // ── public: connect ─────────────────────────────────────────────────────────
   const connect = useCallback(() => {
     if (typeof window === 'undefined' || !window.ethereum) {
-      alert('No wallet extension found. Install MetaMask or any EIP-1193 wallet.');
+      alert('No wallet extension found. Install MetaMask, Rabby, or any EIP-1193 wallet.');
       return;
     }
     const list = detectProviders();
-    if (list.length === 0) {
-      alert('No wallet extension found.');
-      return;
-    }
-    if (list.length === 1) {
-      void doConnect(list[0]);
-    } else {
-      setStep({ kind: 'picking', list });
-    }
-  }, [doConnect]);
+    if (list.length === 0) { alert('No wallet extension found.'); return; }
+    if (list.length === 1) { void doConnect(list[0]); }
+    else                   { setStep({ kind: 'picking', list }); }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── public: disconnect ──────────────────────────────────────────────────────
   const disconnect = useCallback(() => {
@@ -277,73 +303,61 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     address, balance, connecting, connect, disconnect, sendPayment, refreshBalance,
   }), [address, balance, connecting, connect, disconnect, sendPayment, refreshBalance]);
 
-  // ── retry network from net-rejected state ───────────────────────────────────
-  async function retryNetwork() {
-    if (step.kind !== 'net-rejected') return;
-    const p = step.p;
-    const accounts = await p.raw.request<string[]>({ method: 'eth_requestAccounts' }).catch(() => null);
-    const addr = accounts?.[0];
-    if (!addr) return;
-    await doSwitchNetwork(p, addr);
-  }
+  // ── Modal visibility ─────────────────────────────────────────────────────────
+  // Backdrop is dismissible only for states where the user hasn't committed yet.
+  const modalVisible = step.kind !== 'idle';
+  const backdropDismissible =
+    step.kind === 'picking' ||
+    step.kind === 'conn-failed' ||
+    step.kind === 'need-network' ||
+    step.kind === 'net-failed';
 
   return (
     <WalletCtx.Provider value={ctxValue}>
       {children}
 
-      {/* ── Connect modal ────────────────────────────────────────────────────── */}
       <AnimatePresence>
-        {step.kind !== 'idle' && (
+        {modalVisible && (
           <motion.div
             key="wallet-modal-bg"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.15 }}
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            transition={{ duration: 0.12 }}
             className="fixed inset-0 z-[200] flex items-center justify-center p-4"
             style={{ background: 'rgba(0,0,0,0.72)', backdropFilter: 'blur(4px)' }}
-            onClick={() => {
-              if (step.kind === 'picking' || step.kind === 'conn-rejected' || step.kind === 'net-rejected') {
-                setStep({ kind: 'idle' });
-              }
-            }}
+            onClick={() => { if (backdropDismissible) setStep({ kind: 'idle' }); }}
           >
             <motion.div
               key="wallet-modal-card"
               initial={{ opacity: 0, scale: 0.95, y: 8 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 4 }}
-              transition={{ duration: 0.15 }}
+              transition={{ duration: 0.14 }}
               className="bg-[#0d0d14] border border-[rgba(239,159,39,0.2)] rounded-2xl p-6 w-full max-w-sm shadow-2xl"
               onClick={e => e.stopPropagation()}
             >
 
-              {/* Step: provider picker */}
+              {/* ── STEP 1a: wallet picker ──────────────────────────────────── */}
               {step.kind === 'picking' && (
                 <>
-                  <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-start justify-between mb-4">
                     <div>
+                      <p className="text-[10px] font-mono text-[#ef9f27] mb-0.5">STEP 1 OF 2</p>
                       <h2 className="text-white font-bold text-base">Connect Wallet</h2>
                       <p className="text-[#6b6b78] text-xs mt-0.5">Choose a wallet to connect</p>
                     </div>
-                    <button
-                      onClick={() => setStep({ kind: 'idle' })}
-                      className="text-[#4a4a55] hover:text-white transition-colors text-lg leading-none"
-                    >
+                    <button onClick={() => setStep({ kind: 'idle' })}
+                      className="text-[#4a4a55] hover:text-white transition-colors text-lg leading-none mt-0.5">
                       ✕
                     </button>
                   </div>
                   <div className="space-y-2">
                     {step.list.map(p => (
-                      <button
-                        key={p.id}
-                        onClick={() => void doConnect(p)}
-                        className="w-full flex items-center gap-3 px-4 py-3 rounded-xl border border-[rgba(239,159,39,0.12)] hover:border-[rgba(239,159,39,0.4)] hover:bg-[rgba(239,159,39,0.06)] transition-all text-left group"
-                      >
+                      <button key={p.id} onClick={() => void doConnect(p)}
+                        className="w-full flex items-center gap-3 px-4 py-3 rounded-xl border border-[rgba(239,159,39,0.12)] hover:border-[rgba(239,159,39,0.4)] hover:bg-[rgba(239,159,39,0.06)] transition-all text-left group">
                         <span className="text-2xl shrink-0">{p.icon}</span>
                         <div className="min-w-0">
                           <div className="text-white font-medium text-sm">{p.name}</div>
-                          <div className="text-[#4a4a55] text-[10px] font-mono">EIP-1193 Injected</div>
+                          <div className="text-[#4a4a55] text-[10px] font-mono">EIP-1193 · Injected</div>
                         </div>
                         <span className="ml-auto text-[#4a4a55] group-hover:text-[#ef9f27] transition-colors shrink-0">→</span>
                       </button>
@@ -352,83 +366,105 @@ export function WalletProvider({ children }: { children: ReactNode }) {
                 </>
               )}
 
-              {/* Step: waiting for eth_requestAccounts */}
+              {/* ── STEP 1b: waiting for eth_requestAccounts ───────────────── */}
               {step.kind === 'connecting' && (
                 <div className="text-center py-3">
                   <div className="w-10 h-10 border-2 border-[rgba(239,159,39,0.2)] border-t-[#ef9f27] rounded-full animate-spin mx-auto mb-4" />
                   <div className="text-3xl mb-2">{step.p.icon}</div>
                   <p className="text-white font-semibold">Connecting to {step.p.name}</p>
-                  <p className="text-[#6b6b78] text-xs mt-1.5">
+                  <p className="text-[#6b6b78] text-xs mt-1.5 leading-relaxed">
                     Check your wallet extension for a connection prompt…
                   </p>
+                  <div className="mt-4 text-[10px] font-mono text-[#3a3a44]">
+                    STEP 1 OF 2 — wallet connect
+                  </div>
                 </div>
               )}
 
-              {/* Step: waiting for wallet_switchEthereumChain / wallet_addEthereumChain */}
+              {/* ── STEP 1 failed ──────────────────────────────────────────── */}
+              {step.kind === 'conn-failed' && (
+                <div className="text-center py-3">
+                  <div className="text-3xl mb-3">✕</div>
+                  <p className="text-white font-semibold">Connection failed</p>
+                  <p className="text-[#6b6b78] text-xs mt-1.5 leading-relaxed">{step.message}</p>
+                </div>
+              )}
+
+              {/* ── STEP 2a: wrong network detected, awaiting user action ───── */}
+              {step.kind === 'need-network' && (
+                <div className="text-center py-1">
+                  <div className="text-3xl mb-3">🌐</div>
+                  <p className="text-[10px] font-mono text-[#ef9f27] mb-1">STEP 2 OF 2</p>
+                  <p className="text-white font-semibold">Switch to Arc Testnet</p>
+                  <p className="text-[#6b6b78] text-xs mt-2 leading-relaxed">
+                    Your wallet is on a different network.
+                    AgentGuild runs on Arc Testnet (chain 5042002).
+                  </p>
+                  <div className="mt-4 rounded-xl bg-[#050508] border border-[rgba(239,159,39,0.1)] px-4 py-3 text-left">
+                    <div className="space-y-1.5 text-[11px] font-mono">
+                      {[
+                        ['Network',  'Arc Testnet'],
+                        ['Chain ID', '5042002'],
+                        ['Currency', 'ETH'],
+                        ['RPC',      'testnet.arcscan.app'],
+                      ].map(([k, v]) => (
+                        <div key={k} className="flex justify-between gap-4">
+                          <span className="text-[#4a4a55] shrink-0">{k}</span>
+                          <span className="text-white text-right break-all">{v}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => void doSwitchNetwork(step.p, step.addr)}
+                    className="mt-4 w-full py-2.5 rounded-xl bg-[rgba(239,159,39,0.1)] border border-[rgba(239,159,39,0.5)] text-[#ef9f27] text-sm font-mono hover:bg-[rgba(239,159,39,0.18)] transition-colors"
+                  >
+                    Add / Switch Arc Testnet →
+                  </button>
+                  <button onClick={() => setStep({ kind: 'idle' })}
+                    className="mt-2 w-full py-1.5 text-xs text-[#4a4a55] hover:text-[#6b6b78] transition-colors">
+                    Skip for now
+                  </button>
+                </div>
+              )}
+
+              {/* ── STEP 2b: waiting for wallet_switchEthereumChain ────────── */}
               {step.kind === 'switching' && (
                 <div className="text-center py-3">
                   <div className="w-10 h-10 border-2 border-[rgba(239,159,39,0.2)] border-t-[#ef9f27] rounded-full animate-spin mx-auto mb-4" />
                   <div className="text-2xl mb-2">🌐</div>
                   <p className="text-white font-semibold">
-                    {step.adding ? 'Add Arc Testnet' : 'Switch to Arc Testnet'}
+                    {step.adding ? 'Adding Arc Testnet…' : 'Switching network…'}
                   </p>
                   <p className="text-[#6b6b78] text-xs mt-1.5 leading-relaxed">
                     {step.adding
-                      ? `Approve adding Arc Testnet in ${step.p.name} to continue`
-                      : `Approve the network switch in ${step.p.name} to continue`}
+                      ? `Approve adding Arc Testnet in ${step.p.name}…`
+                      : `Approve the network switch in ${step.p.name}…`}
                   </p>
-                  <div className="mt-4 rounded-xl bg-[#050508] border border-[rgba(239,159,39,0.1)] px-4 py-3 text-left">
-                    <div className="space-y-1 text-[11px] font-mono">
-                      <div className="flex justify-between">
-                        <span className="text-[#4a4a55]">Network</span>
-                        <span className="text-white">Arc Testnet</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-[#4a4a55]">Chain ID</span>
-                        <span className="text-white">5042002</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-[#4a4a55]">Currency</span>
-                        <span className="text-white">ETH</span>
-                      </div>
-                      <div className="flex justify-between gap-4">
-                        <span className="text-[#4a4a55] shrink-0">RPC</span>
-                        <span className="text-white text-right break-all">testnet.arcscan.app</span>
-                      </div>
-                    </div>
+                  <div className="mt-4 text-[10px] font-mono text-[#3a3a44]">
+                    STEP 2 OF 2 — network switch
                   </div>
                 </div>
               )}
 
-              {/* Step: user rejected wallet connection */}
-              {step.kind === 'conn-rejected' && (
-                <div className="text-center py-3">
-                  <div className="text-3xl mb-3">✕</div>
-                  <p className="text-white font-semibold">Connection cancelled</p>
-                  <p className="text-[#6b6b78] text-xs mt-1.5">You declined the wallet request.</p>
-                </div>
-              )}
-
-              {/* Step: user rejected network switch */}
-              {step.kind === 'net-rejected' && (
-                <div className="text-center py-3">
+              {/* ── STEP 2 failed ──────────────────────────────────────────── */}
+              {step.kind === 'net-failed' && (
+                <div className="text-center py-1">
                   <div className="text-3xl mb-3">🌐</div>
+                  <p className="text-[10px] font-mono text-[#ef9f27] mb-1">STEP 2 OF 2</p>
                   <p className="text-white font-semibold">Arc Testnet required</p>
-                  <p className="text-[#6b6b78] text-xs mt-2 leading-relaxed">
-                    AgentGuild runs on Arc Testnet (chain 5042002).
-                    Please approve the network in {step.p.name} to continue.
+                  <p className="text-[#ef4444] text-xs mt-2 leading-relaxed bg-red-950/30 border border-red-900/40 rounded-lg px-3 py-2">
+                    {step.message}
                   </p>
                   <button
-                    onClick={() => void retryNetwork()}
+                    onClick={() => void doSwitchNetwork(step.p, step.addr)}
                     className="mt-4 w-full py-2.5 rounded-xl border border-[rgba(239,159,39,0.5)] text-[#ef9f27] text-sm font-mono hover:bg-[rgba(239,159,39,0.1)] transition-colors"
                   >
-                    Add / Switch Arc Testnet →
+                    Try again →
                   </button>
-                  <button
-                    onClick={() => setStep({ kind: 'idle' })}
-                    className="mt-2 w-full py-1.5 text-xs text-[#4a4a55] hover:text-[#6b6b78] transition-colors"
-                  >
-                    Cancel
+                  <button onClick={() => setStep({ kind: 'idle' })}
+                    className="mt-2 w-full py-1.5 text-xs text-[#4a4a55] hover:text-[#6b6b78] transition-colors">
+                    Skip for now
                   </button>
                 </div>
               )}
