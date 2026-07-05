@@ -1,17 +1,21 @@
-// LLM provider chain:
-//   1. Rotate through GROQ_API_KEY_1..5 (skip 429/413 per key, immediate retry on next)
-//   2. Fall back to single GROQ_API_KEY if numbered keys not set
-//   3. Fall through to OpenRouter only when every Groq key is exhausted
+// LLM provider via Groq with centralized rate-limiting queue and exponential backoff.
 //
-// Log format: [label] key=N/M served by groq/model (tokens tokens)
-//             [label] all Groq keys exhausted, trying OpenRouter
+// Key properties:
+//   • All calls go through llm-queue.ts: max 3 concurrent, ≥400ms between dispatches.
+//   • Key rotation counter is global within this invocation and never reset between calls.
+//   • On 429: exponential backoff (2s → 4s → 8s) retrying the NEXT key each time.
+//     Max 3 attempts total (1 initial + 2 retries) → max wait 6s per call before fail.
+//   • OpenRouter is last-resort fallback only if OPENROUTER_API_KEY is set.
 //
 // Set MOCK_MODE=true to skip all LLM calls and return canned responses instantly.
 
+import { enqueue } from './llm-queue';
+
 const GROQ_MODEL = 'llama-3.3-70b-versatile';
 const OR_MODEL = 'meta-llama/llama-3.3-70b-instruct:free';
-const MAX_RETRY_WAIT_MS = 8_000;
 const FETCH_TIMEOUT_MS = 12_000;
+const MAX_ATTEMPTS = 3;      // 1 initial + 2 retries
+const BACKOFF_BASE_MS = 2000; // 2s, 4s on successive 429s
 
 // Canned responses for MOCK_MODE=true — realistic enough to pass quality scoring
 const MOCK_RESPONSES: Record<string, string> = {
@@ -45,11 +49,15 @@ function parseResetMs(str: string | undefined): number | null {
 
 type CompletionResult = { text: string; servedBy: string; tokensUsed: number };
 
-// Module-level rotation index so hot lambdas distribute load across keys.
-// Random init so cold-start processes don't all pile onto key_1 simultaneously.
-// Each chatComplete() claims its slot atomically (before any await) so concurrent
-// calls within the same process never share the same starting key.
-let _rotationIdx = Math.floor(Math.random() * 5);
+// Global rotation index — never reset, increments with every chatComplete call.
+// Random init so concurrent serverless invocations don't all start at key_1.
+let _keyIdx = Math.floor(Math.random() * 5);
+
+function _nextKeyIdx(numKeys: number): number {
+  const idx = _keyIdx % numKeys;
+  _keyIdx++;
+  return idx;
+}
 
 function getGroqKeys(): string[] {
   const numbered: string[] = [];
@@ -157,6 +165,52 @@ async function callOpenRouter(
   return { text: data.choices?.[0]?.message?.content ?? '', servedBy, tokensUsed };
 }
 
+// Inner function: actual LLM call with exponential backoff. Runs inside queue slot.
+async function _doChat(
+  messages: { role: string; content: string }[],
+  maxTokens: number,
+  label: string,
+): Promise<CompletionResult> {
+  const keys = getGroqKeys();
+
+  if (keys.length === 0) {
+    console.warn(`[${label}] No Groq keys configured, using OpenRouter directly`);
+    return callOpenRouter(messages, maxTokens, label);
+  }
+
+  let lastErr: unknown;
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    const keyIdx = _nextKeyIdx(keys.length);
+
+    if (attempt > 0) {
+      const backoffMs = BACKOFF_BASE_MS * Math.pow(2, attempt - 1); // 2s, 4s
+      console.warn(`[${label}] key=${keyIdx + 1}/${keys.length} — backoff ${backoffMs}ms then retrying`);
+      console.log(`[LLMQueue] rate-limited  label=${label}  backoff=${backoffMs}ms  attempt=${attempt + 1}/${MAX_ATTEMPTS}`);
+      await new Promise<void>(r => setTimeout(r, backoffMs));
+    }
+
+    try {
+      return await callGroqWithKey(keys[keyIdx], keyIdx, keys.length, messages, maxTokens, label);
+    } catch (err) {
+      const e = err as { status?: number };
+      if (e.status === 429 || e.status === 413 || e.status === 524) {
+        const next = _keyIdx % keys.length;
+        console.warn(`[${label}] key=${keyIdx + 1}/${keys.length} ${e.status} (${e.status === 524 ? 'timeout' : 'rate-limited'}) — will retry key=${next + 1}`);
+        lastErr = err;
+        continue;
+      }
+      throw err;
+    }
+  }
+
+  if (process.env.OPENROUTER_API_KEY) {
+    console.warn(`[${label}] All ${MAX_ATTEMPTS} attempts exhausted — falling back to OpenRouter`);
+    return callOpenRouter(messages, maxTokens, label);
+  }
+
+  throw lastErr ?? new Error(`All ${MAX_ATTEMPTS} Groq attempts failed for [${label}]`);
+}
+
 export async function chatComplete({
   messages,
   system,
@@ -175,60 +229,5 @@ export async function chatComplete({
   }
 
   const all = system ? [{ role: 'system', content: system }, ...messages] : messages;
-  const keys = getGroqKeys();
-
-  if (keys.length === 0) {
-    // No Groq keys at all — go straight to OpenRouter
-    console.warn(`[${label}] No Groq keys configured, using OpenRouter directly`);
-    return callOpenRouter(all, maxTokens, label);
-  }
-
-  // Two passes: first tries all keys; if all 429, sleep for the shortest reported
-  // reset window then retry once before falling through to OpenRouter.
-  for (let attempt = 0; attempt <= 1; attempt++) {
-    // Claim starting slot atomically (before any await) so concurrent calls within
-    // this process each begin at a different key rather than all piling onto key_1.
-    const start = _rotationIdx % keys.length;
-    _rotationIdx = (start + 1) % keys.length;
-
-    let minRetryAfterMs: number | null = null;
-
-    for (let i = 0; i < keys.length; i++) {
-      const idx = (start + i) % keys.length;
-      try {
-        return await callGroqWithKey(keys[idx], idx, keys.length, all, maxTokens, label);
-      } catch (err) {
-        const e = err as { status?: number; retryAfterMs?: number };
-        // Retry across keys on: 429/413 (rate limit) and 524 (Cloudflare gateway timeout).
-        if (e.status === 429 || e.status === 413 || e.status === 524) {
-          if (e.retryAfterMs != null) {
-            minRetryAfterMs = minRetryAfterMs == null ? e.retryAfterMs : Math.min(minRetryAfterMs, e.retryAfterMs);
-          }
-          const next = (idx + 1) % keys.length;
-          if (i < keys.length - 1) {
-            console.warn(`[${label}] key=${idx + 1}/${keys.length} ${e.status} (${e.status === 524 ? 'timeout' : 'rate-limited'}), trying key=${next + 1}`);
-          }
-          continue;
-        }
-        throw err;
-      }
-    }
-
-    if (attempt === 0) {
-      const waitMs = Math.min(minRetryAfterMs ?? 10_000, MAX_RETRY_WAIT_MS);
-      console.warn(
-        `[${label}] All ${keys.length} Groq key(s) unavailable — ` +
-        `waiting ${(waitMs / 1000).toFixed(1)}s, retrying…`
-      );
-      await new Promise<void>(r => setTimeout(r, waitMs));
-    }
-  }
-
-  // Both passes exhausted — fall through to OpenRouter
-  if (process.env.OPENROUTER_API_KEY) {
-    console.warn(`[${label}] All ${keys.length} Groq key(s) still rate-limited after retry, falling back to OpenRouter`);
-    return callOpenRouter(all, maxTokens, label);
-  }
-
-  throw new Error(`All ${keys.length} Groq key(s) rate-limited after retry and no OpenRouter key configured`);
+  return enqueue(() => _doChat(all, maxTokens, label), label);
 }

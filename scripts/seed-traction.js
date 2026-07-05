@@ -9,17 +9,6 @@ const BASE_URL = process.argv.includes('--base-url')
   ? process.argv[process.argv.indexOf('--base-url') + 1]
   : 'http://localhost:3000';
 
-// Minimum ms between job submissions — spreads Groq token bursts across the
-// per-minute rate-limit window even if a previous job finishes very quickly.
-const PACE_MS = 2000;
-let lastSubmitAt = 0;
-
-async function paceSubmit() {
-  const wait = PACE_MS - (Date.now() - lastSubmitAt);
-  if (wait > 0) await sleep(wait);
-  lastSubmitAt = Date.now();
-}
-
 async function post(path, body) {
   const res = await fetch(`${BASE_URL}${path}`, {
     method: 'POST',
@@ -200,7 +189,6 @@ async function main() {
     const label = `[${i + 1}/${DIRECT_JOBS.length}] direct·${job.skill}`;
 
     try {
-      await paceSubmit();
       process.stdout.write(`${label} … `);
       const { jobId } = await post('/api/jobs/direct', {
         agentId,
@@ -211,7 +199,6 @@ async function main() {
       if (result === null) {
         console.warn(`  ⚠ timeout — job still running on server; waiting 8s before next submission`);
         await sleep(8000);
-        lastSubmitAt = Date.now();
       }
       if (result?.status === 'completed') {
         completed++;
@@ -228,8 +215,6 @@ async function main() {
       console.log(`✗  ${e.message}`);
       results.push({ type: 'direct', skill: job.skill, status: 'error' });
     }
-
-    if (i < DIRECT_JOBS.length - 1) await sleep(1200);
   }
 
   console.log();
@@ -242,7 +227,6 @@ async function main() {
     const label = `[${i + 1}/${AUTO_JOBS.length}] auto`;
 
     try {
-      await paceSubmit();
       process.stdout.write(`${label} "${preview}…" → `);
       const { jobId } = await post('/api/jobs', {
         description: job.description,
@@ -252,7 +236,6 @@ async function main() {
       if (result === null) {
         console.warn(`  ⚠ timeout — job still running on server; waiting 8s before next submission`);
         await sleep(8000);
-        lastSubmitAt = Date.now();
       }
       if (result?.status === 'completed') {
         completed++;
@@ -270,8 +253,6 @@ async function main() {
       console.log(`✗  ${e.message}`);
       results.push({ type: 'auto', status: 'error' });
     }
-
-    if (i < AUTO_JOBS.length - 1) await sleep(1500);
   }
 
   // ── Summary ──────────────────────────────────────────────────────────────
