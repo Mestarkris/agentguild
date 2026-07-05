@@ -68,6 +68,12 @@ export default function NetworkGraph() {
     function draw() {
       const elapsed = (Date.now() - t0) / 1000;
 
+      // sf compensates for CSS scaling: canvas is IW px internally but may display
+      // narrower (e.g. 375 px mobile). Multiply canvas sizes by sf so the rendered
+      // output is the same physical size regardless of display width.
+      const displayW = canvasRef.current?.getBoundingClientRect().width || IW;
+      const sf = IW / Math.max(displayW, 1);
+
       const isDark = document.documentElement.classList.contains('dark');
 
       // Read theme colors each frame so they update when theme changes
@@ -152,7 +158,7 @@ export default function NetworkGraph() {
       ctx.lineWidth = isDark ? 1.5 : 2;
       ctx.stroke();
 
-      ctx.font = 'bold 11px "JetBrains Mono", monospace';
+      ctx.font = `bold ${Math.round(11 * sf)}px "JetBrains Mono", monospace`;
       ctx.fillStyle = ACCENT;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
@@ -182,7 +188,7 @@ export default function NetworkGraph() {
         ctx.stroke();
 
         const fs = label.length > 6 ? 7.5 : 8.5;
-        ctx.font = `${fs}px "JetBrains Mono", monospace`;
+        ctx.font = `${Math.round(fs * sf)}px "JetBrains Mono", monospace`;
         ctx.fillStyle = isActive
           ? `rgba(${accentRgb}, ${nodeTextBase + nodeTextRange * Math.sin(phase)})`
           : `rgba(${accentRgb}, ${nodeTextIdle})`;
@@ -191,9 +197,11 @@ export default function NetworkGraph() {
         ctx.fillText(label, x, y);
 
         const dotPulse = 0.5 + 0.5 * Math.sin(phase + 0.8);
-        const dotR = isActive ? 2.5 + dotPulse * 0.8 : 1.8;
+        const dotSf = Math.min(sf, 2); // cap dot scale so they don't get huge at extreme zoom
+        const dotR = isActive ? (2.5 + dotPulse * 0.8) * dotSf : 1.8 * dotSf;
+        const dotOff = Math.round(17 * dotSf);
         ctx.beginPath();
-        ctx.arc(x + 17, y - 17, dotR, 0, Math.PI * 2);
+        ctx.arc(x + dotOff, y - dotOff, dotR, 0, Math.PI * 2);
         ctx.fillStyle = isActive
           ? `rgba(${accentRgb}, ${dotAlphaHi + dotAlphaRange * dotPulse})`
           : `rgba(${accentRgb}, ${dotAlphaIdle})`;

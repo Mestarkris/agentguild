@@ -162,16 +162,16 @@ export default function Dashboard() {
       <div className="rounded-xl border border-[var(--border-accent-dim)] bg-[var(--surface)] p-5 shadow-sm mb-8">
         <h2 className="text-sm font-semibold text-[var(--text-1)] mb-4">Agent Leaderboard</h2>
         <div className="overflow-x-auto">
-          <table className="w-full text-xs">
+          <table className="w-full min-w-[480px] text-xs">
             <thead>
               <tr className="text-left text-[var(--text-4)] border-b border-[var(--border-subtle)]">
                 <th className="pb-2 pr-4">#</th>
                 <th className="pb-2 pr-4">Agent</th>
-                <th className="pb-2 pr-4">Skill</th>
-                <th className="pb-2 pr-4 text-right">Jobs</th>
+                <th className="pb-2 pr-4 hidden sm:table-cell">Skill</th>
+                <th className="pb-2 pr-4 text-right hidden sm:table-cell">Jobs</th>
                 <th className="pb-2 pr-4 text-right">USDC Earned</th>
-                <th className="pb-2 pr-4 text-right">Avg Quality</th>
-                <th className="pb-2 text-right">Bond Health</th>
+                <th className="pb-2 pr-4 text-right hidden sm:table-cell">Avg Quality</th>
+                <th className="pb-2 text-right hidden sm:table-cell">Bond Health</th>
               </tr>
             </thead>
             <tbody>
@@ -182,11 +182,11 @@ export default function Dashboard() {
                   <tr key={a.id} className="border-b border-[var(--border-subtle)] hover:bg-[var(--tint-accent)]">
                     <td className="py-2 pr-4 text-[var(--text-5)]">{i + 1}</td>
                     <td className="py-2 pr-4 text-[var(--text-1)] font-medium">{a.name}</td>
-                    <td className="py-2 pr-4 text-[var(--text-3)]">{SKILL_EMOJI[a.skill]} {a.skill}</td>
-                    <td className="py-2 pr-4 text-right text-[var(--text-2)]">{a.total_jobs}</td>
+                    <td className="py-2 pr-4 text-[var(--text-3)] hidden sm:table-cell">{SKILL_EMOJI[a.skill]} {a.skill}</td>
+                    <td className="py-2 pr-4 text-right text-[var(--text-2)] hidden sm:table-cell">{a.total_jobs}</td>
                     <td className="py-2 pr-4 text-right font-mono" style={{ color: statCyan }}>${a.total_earned.toFixed(5)}</td>
-                    <td className="py-2 pr-4 text-right text-[var(--text-2)]">{a.avg_quality.toFixed(3)}</td>
-                    <td className="py-2 text-right">
+                    <td className="py-2 pr-4 text-right text-[var(--text-2)] hidden sm:table-cell">{a.avg_quality.toFixed(3)}</td>
+                    <td className="py-2 text-right hidden sm:table-cell">
                       <span className={pct > 66 ? 'text-green-500 dark:text-green-400' : pct > 33 ? 'text-yellow-600 dark:text-yellow-400' : 'text-red-500 dark:text-red-400'}>
                         {pct}%
                       </span>
@@ -214,11 +214,12 @@ export default function Dashboard() {
               <div key={tx.id} className="flex items-center gap-3 py-2 border-b border-[var(--border-subtle)] text-xs">
                 <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${tx.demo ? 'bg-yellow-500 dark:bg-yellow-400' : 'bg-green-500 dark:bg-green-400'}`} />
                 <div className="shrink-0">
-                  <span className="text-[var(--text-2)]">{SKILL_EMOJI[tx.agent_skill] ?? '🤖'} {tx.agent_name}</span>
+                  <span className="hidden sm:inline text-[var(--text-2)]">{SKILL_EMOJI[tx.agent_skill] ?? '🤖'} {tx.agent_name}</span>
+                  <span className="sm:hidden text-[var(--text-2)]">{SKILL_EMOJI[tx.agent_skill] ?? '🤖'}</span>
                 </div>
                 <div className="flex-1 text-[var(--text-5)] truncate">{tx.job_description?.slice(0, 50)}</div>
                 <div className="font-mono shrink-0" style={{ color: statCyan }}>${tx.amount_usdc.toFixed(5)}</div>
-                <div className="shrink-0">
+                <div className="shrink-0 hidden sm:block">
                   {href ? (
                     <a href={href} target="_blank" rel="noopener noreferrer"
                       className="font-mono text-cyan-700 dark:text-cyan-500 hover:text-cyan-500 dark:hover:text-cyan-300 transition-colors">

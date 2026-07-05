@@ -122,9 +122,9 @@ export default function Home() {
   return (
     <div className="min-h-screen">
       {/* Hero */}
-      <section className="grid-bg pt-14 pb-8 px-6 overflow-hidden">
+      <section className="grid-bg pt-14 pb-8 px-4 sm:px-6 overflow-hidden">
         <div className="max-w-3xl mx-auto text-center mb-6">
-          <h1 className="text-5xl md:text-6xl font-bold tracking-tight mb-3">
+          <h1 className="text-4xl sm:text-5xl md:text-6xl font-bold tracking-tight mb-3">
             Agent<span className="text-[var(--accent)]">Guild</span>
           </h1>
           <p className="text-[var(--text-3)] text-base max-w-md mx-auto">
@@ -138,7 +138,7 @@ export default function Home() {
       <TickerStrip items={tickerItems} />
 
       {/* Submit */}
-      <section className="max-w-2xl mx-auto px-6 py-10">
+      <section className="max-w-2xl mx-auto px-4 sm:px-6 py-10">
         <h2 className="text-sm font-mono text-[var(--text-4)] uppercase tracking-widest mb-5">Submit a Job</h2>
         <form onSubmit={handleSubmit} className="space-y-3">
           <textarea
@@ -259,7 +259,7 @@ export default function Home() {
 
       {/* Recent jobs */}
       {recentJobs.length > 0 && (
-        <section className="max-w-2xl mx-auto px-6 pb-16">
+        <section className="max-w-2xl mx-auto px-4 sm:px-6 pb-16">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-xs font-mono text-[var(--text-4)] uppercase tracking-widest">Recent Jobs</h2>
             <Link href="/jobs" className="text-xs text-[var(--accent)] hover:text-[var(--accent-hover)] transition-colors font-mono">

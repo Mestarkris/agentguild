@@ -136,7 +136,7 @@ export default function ShowcasePage() {
         </p>
 
         {metrics && (
-          <div className="flex items-center gap-6 mt-4 pt-4 border-t border-[var(--border-subtle)]">
+          <div className="grid grid-cols-2 sm:flex sm:items-center sm:gap-6 gap-3 mt-4 pt-4 border-t border-[var(--border-subtle)]">
             <div>
               <div className="text-xl font-bold font-mono text-[var(--accent)]">{totalJobs}</div>
               <div className="text-[10px] font-mono text-[var(--text-5)] uppercase">Jobs Completed</div>

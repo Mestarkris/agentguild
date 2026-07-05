@@ -80,8 +80,8 @@ export default function JobsPage() {
           <Link href="/" className="text-[var(--accent)] hover:text-[var(--accent-hover)]">Submit one →</Link>
         </p>
       ) : (
-        <div className="rounded-xl border border-[var(--border-accent-dim)] overflow-hidden shadow-sm">
-          <table className="w-full text-xs">
+        <div className="rounded-xl border border-[var(--border-accent-dim)] shadow-sm overflow-x-auto">
+          <table className="w-full min-w-[500px] text-xs">
             <thead>
               <tr className="border-b border-[var(--border-subtle)]">
                 <th className="text-left font-mono font-normal text-[var(--text-4)] px-4 py-2.5 w-24">JOB ID</th>
