@@ -44,38 +44,35 @@ function JobCard({ job, index }: { job: ShowcaseJob; index: number }) {
       transition={{ delay: index * 0.04 }}
     >
       <Link href={`/jobs/${job.id}`}>
-        <div className="rounded-xl border border-[rgba(239,159,39,0.1)] bg-[#0d0d14] p-5 hover:border-[rgba(239,159,39,0.25)] hover:bg-[#0f0f18] transition-all cursor-pointer group">
-          {/* Header row */}
+        <div className="rounded-xl border border-[var(--border-accent-dim)] bg-[var(--surface)] p-5 hover:border-[var(--border-accent-mid)] hover:bg-[var(--surface-hi)] transition-all cursor-pointer group shadow-sm">
           <div className="flex items-start justify-between gap-3 mb-3">
             <div className="flex items-center gap-2 flex-wrap">
               {(job.agentSkills ?? []).slice(0, 4).map((sk, i) => (
                 <span key={i} className="text-sm" title={sk}>{SKILL_EMOJI[sk] ?? '🤖'}</span>
               ))}
               {(job.agentSkills?.length ?? 0) > 4 && (
-                <span className="text-[10px] font-mono text-[#4a4a55]">+{(job.agentSkills?.length ?? 0) - 4}</span>
+                <span className="text-[10px] font-mono text-[var(--text-4)]">+{(job.agentSkills?.length ?? 0) - 4}</span>
               )}
             </div>
             <div className="flex items-center gap-2 shrink-0">
               {isDirectHire && (
-                <span className="text-[9px] font-mono px-1.5 py-0.5 rounded border border-[rgba(239,159,39,0.2)] text-[#ef9f27]">
+                <span className="text-[9px] font-mono px-1.5 py-0.5 rounded border border-[var(--border-accent-dim)] text-[var(--accent)]">
                   direct
                 </span>
               )}
               {job.total_price_usdc != null && (
-                <span className="text-sm font-bold font-mono text-[#ef9f27]">
+                <span className="text-sm font-bold font-mono text-[var(--accent)]">
                   ${job.total_price_usdc.toFixed(4)}
                 </span>
               )}
             </div>
           </div>
 
-          {/* Description */}
-          <p className="text-sm text-[#a0a0a8] leading-relaxed mb-3 line-clamp-2 group-hover:text-white transition-colors">
+          <p className="text-sm text-[var(--text-2)] leading-relaxed mb-3 line-clamp-2 group-hover:text-[var(--text-1)] transition-colors">
             {job.description.length > 140 ? job.description.slice(0, 140) + '…' : job.description}
           </p>
 
-          {/* Footer */}
-          <div className="flex items-center justify-between text-[10px] font-mono text-[#3a3a44]">
+          <div className="flex items-center justify-between text-[10px] font-mono text-[var(--text-5)]">
             <span>{job.id.slice(0, 8)}</span>
             <div className="flex items-center gap-3">
               {job.completed_at && job.submitted_at && (
@@ -104,12 +101,10 @@ export default function ShowcasePage() {
         ]);
         setMetrics(m);
 
-        // Filter completed, fetch subtask skills from recent_jobs metrics or separately
         const completed = rawJobs
           .filter(j => j.status === 'completed')
           .slice(0, 24);
 
-        // Enrich with agent skills via the job's subtasks if present
         const enriched: ShowcaseJob[] = completed.map(j => ({
           ...j,
           agentSkills: (j.subtasks ?? []).map(st => st.skill).filter(Boolean),
@@ -131,36 +126,32 @@ export default function ShowcasePage() {
 
   return (
     <div className="max-w-5xl mx-auto px-6 py-10">
-      {/* Header */}
       <div className="mb-8">
         <div className="flex items-center justify-between mb-1">
-          <h1 className="text-2xl font-bold text-white">
-            Job Showcase
-          </h1>
-          <span className="text-xs font-mono text-[#4a4a55]">public · live</span>
+          <h1 className="text-2xl font-bold text-[var(--text-1)]">Job Showcase</h1>
+          <span className="text-xs font-mono text-[var(--text-4)]">public · live</span>
         </div>
-        <p className="text-xs font-mono text-[#4a4a55]">
+        <p className="text-xs font-mono text-[var(--text-4)]">
           Completed jobs across the platform — browse what agents have built
         </p>
 
-        {/* Stat strip */}
         {metrics && (
-          <div className="flex items-center gap-6 mt-4 pt-4 border-t border-[rgba(239,159,39,0.06)]">
+          <div className="flex items-center gap-6 mt-4 pt-4 border-t border-[var(--border-subtle)]">
             <div>
-              <div className="text-xl font-bold font-mono text-[#ef9f27]">{totalJobs}</div>
-              <div className="text-[10px] font-mono text-[#3a3a44] uppercase">Jobs Completed</div>
+              <div className="text-xl font-bold font-mono text-[var(--accent)]">{totalJobs}</div>
+              <div className="text-[10px] font-mono text-[var(--text-5)] uppercase">Jobs Completed</div>
             </div>
             <div>
-              <div className="text-xl font-bold font-mono text-[#ef9f27]">${totalUSDC.toFixed(4)}</div>
-              <div className="text-[10px] font-mono text-[#3a3a44] uppercase">USDC Settled</div>
+              <div className="text-xl font-bold font-mono text-[var(--accent)]">${totalUSDC.toFixed(4)}</div>
+              <div className="text-[10px] font-mono text-[var(--text-5)] uppercase">USDC Settled</div>
             </div>
             <div>
-              <div className="text-xl font-bold font-mono text-[#ef9f27]">{metrics.totals.agents_registered}</div>
-              <div className="text-[10px] font-mono text-[#3a3a44] uppercase">Agents Online</div>
+              <div className="text-xl font-bold font-mono text-[var(--accent)]">{metrics.totals.agents_registered}</div>
+              <div className="text-[10px] font-mono text-[var(--text-5)] uppercase">Agents Online</div>
             </div>
             <div>
-              <div className="text-xl font-bold font-mono text-[#ef9f27]">{metrics.totals.avg_settlement_secs.toFixed(1)}s</div>
-              <div className="text-[10px] font-mono text-[#3a3a44] uppercase">Avg Settlement</div>
+              <div className="text-xl font-bold font-mono text-[var(--accent)]">{metrics.totals.avg_settlement_secs.toFixed(1)}s</div>
+              <div className="text-[10px] font-mono text-[var(--text-5)] uppercase">Avg Settlement</div>
             </div>
           </div>
         )}
@@ -169,16 +160,16 @@ export default function ShowcasePage() {
       {loading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="h-32 rounded-xl bg-[#0d0d14] border border-[rgba(239,159,39,0.06)] animate-pulse" />
+            <div key={i} className="h-32 rounded-xl bg-[var(--surface)] border border-[var(--border-accent-dim)] animate-pulse shadow-sm" />
           ))}
         </div>
       ) : jobs.length === 0 ? (
         <div className="text-center py-16">
           <p className="text-4xl mb-3">🏗️</p>
-          <p className="text-[#4a4a55] text-sm font-mono">No completed jobs yet.</p>
-          <p className="text-[#3a3a44] text-xs font-mono mt-1">
+          <p className="text-[var(--text-4)] text-sm font-mono">No completed jobs yet.</p>
+          <p className="text-[var(--text-5)] text-xs font-mono mt-1">
             Submit a job from the{' '}
-            <Link href="/" className="text-[#ef9f27] hover:underline">home page</Link>{' '}
+            <Link href="/" className="text-[var(--accent)] hover:underline">home page</Link>{' '}
             to get started.
           </p>
         </div>
@@ -191,7 +182,7 @@ export default function ShowcasePage() {
       )}
 
       {jobs.length > 0 && (
-        <p className="text-center text-[10px] font-mono text-[#2a2a33] mt-8">
+        <p className="text-center text-[10px] font-mono text-[var(--text-6)] mt-8">
           Showing {jobs.length} completed jobs · Arc Testnet · USDC
         </p>
       )}

@@ -31,7 +31,7 @@ function QualityDots({ score }: { score: number }) {
         <div
           key={i}
           className="w-1.5 h-1.5 rounded-full"
-          style={{ background: i < filled ? '#ef9f27' : 'rgba(239,159,39,0.15)' }}
+          style={{ background: i < filled ? 'var(--accent)' : 'var(--border-accent-dim)' }}
         />
       ))}
     </div>
@@ -49,17 +49,13 @@ function AgentCard({ agent, index }: { agent: Agent; index: number }) {
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.04 }}
-      className="relative rounded-xl border border-[rgba(239,159,39,0.1)] bg-[#0d0d14] overflow-hidden flex flex-col hover:border-[rgba(239,159,39,0.3)] hover:bg-[#0f0f18] transition-all cursor-pointer"
+      className="relative rounded-xl border border-[var(--border-accent-dim)] bg-[var(--surface)] overflow-hidden flex flex-col hover:border-[var(--border-accent-mid)] hover:bg-[var(--surface-hi)] transition-all cursor-pointer shadow-sm"
     >
-      {/* Bond health strip — left edge, fills from top, height = % of bond remaining */}
-      <div className="absolute top-0 left-0 w-0.5 h-full bg-[#0d0d14]">
+      {/* Bond health strip */}
+      <div className="absolute top-0 left-0 w-0.5 h-full bg-[var(--surface)]">
         <div
           className="w-full transition-all duration-1000"
-          style={{
-            height: `${healthPct}%`,
-            background: bondColor(health),
-            opacity: 0.7,
-          }}
+          style={{ height: `${healthPct}%`, background: bondColor(health), opacity: 0.7 }}
         />
       </div>
 
@@ -67,48 +63,46 @@ function AgentCard({ agent, index }: { agent: Agent; index: number }) {
         {/* Header */}
         <div className="flex items-start justify-between gap-2">
           <div>
-            <div className="font-semibold text-white text-sm leading-tight">{agent.name}</div>
-            <div className="text-[10px] font-mono text-[#4a4a55] mt-0.5">{agent.skill}</div>
+            <div className="font-semibold text-[var(--text-1)] text-sm leading-tight">{agent.name}</div>
+            <div className="text-[10px] font-mono text-[var(--text-4)] mt-0.5">{agent.skill}</div>
           </div>
-          {/* Status dot */}
           <div className="flex items-center gap-1.5 text-xs shrink-0">
             <span
               className={`w-2 h-2 rounded-full ${isActive ? 'animate-pulse' : ''}`}
-              style={{ background: isActive ? '#ef9f27' : '#3a3a44' }}
+              style={{ background: isActive ? 'var(--accent)' : 'var(--text-5)' }}
             />
-            <span className={`text-[10px] font-mono ${isActive ? 'text-[#ef9f27]' : 'text-[#3a3a44]'}`}>
+            <span className="text-[10px] font-mono" style={{ color: isActive ? 'var(--accent)' : 'var(--text-5)' }}>
               {agent.status}
             </span>
           </div>
         </div>
 
         {/* Description */}
-        <p className="text-xs text-[#6b6b78] leading-relaxed">{agent.description}</p>
+        <p className="text-xs text-[var(--text-3)] leading-relaxed">{agent.description}</p>
 
         {/* Price + quality */}
         <div className="flex items-center justify-between">
           <div className="flex items-baseline gap-1">
-            <span className="text-base font-bold font-mono text-white">${agent.price_usdc}</span>
-            <span className="text-[10px] text-[#4a4a55]">/ {agent.price_unit}</span>
+            <span className="text-base font-bold font-mono text-[var(--text-1)]">${agent.price_usdc}</span>
+            <span className="text-[10px] text-[var(--text-4)]">/ {agent.price_unit}</span>
           </div>
           <QualityDots score={agent.avg_quality} />
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between pt-2 border-t border-[rgba(239,159,39,0.06)]">
-          <div className="text-[10px] text-[#4a4a55] font-mono">
-            <span className="text-[#a0a0a8]">{agent.total_jobs}</span> jobs{' · '}
+        <div className="flex items-center justify-between pt-2 border-t border-[var(--border-subtle)]">
+          <div className="text-[10px] text-[var(--text-4)] font-mono">
+            <span className="text-[var(--text-2)]">{agent.total_jobs}</span> jobs{' · '}
             <span
-              className={`${isActive && agent.total_earned > 0 ? 'text-[#ef9f27]' : 'text-[#a0a0a8]'} ${
-                isActive && agent.total_earned > 0 ? 'animate-pulse' : ''
-              }`}
+              style={{ color: isActive && agent.total_earned > 0 ? 'var(--accent)' : 'var(--text-2)' }}
+              className={isActive && agent.total_earned > 0 ? 'animate-pulse' : ''}
             >
               ${agent.total_earned.toFixed(4)}
             </span>{' '}
             earned
           </div>
           <div
-            className="text-[10px] font-mono text-[#3a3a44] hover:text-[#6b6b78] transition-colors cursor-default"
+            className="text-[10px] font-mono text-[var(--text-5)] hover:text-[var(--text-3)] transition-colors cursor-default"
             title={agent.wallet_address}
           >
             {truncAddr(agent.wallet_address)}
@@ -134,8 +128,8 @@ export default function Marketplace() {
   return (
     <div className="max-w-6xl mx-auto px-6 py-10">
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-white mb-0.5">Agent Marketplace</h1>
-        <p className="text-xs font-mono text-[#4a4a55]">
+        <h1 className="text-2xl font-bold text-[var(--text-1)] mb-0.5">Agent Marketplace</h1>
+        <p className="text-xs font-mono text-[var(--text-4)]">
           {agents.length} agents registered · x402-gated · paid in USDC on Arc
         </p>
       </div>
@@ -143,13 +137,13 @@ export default function Marketplace() {
       {loading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="h-44 rounded-xl bg-[#0d0d14] border border-[rgba(239,159,39,0.06)] animate-pulse" />
+            <div key={i} className="h-44 rounded-xl bg-[var(--surface)] border border-[var(--border-accent-dim)] animate-pulse shadow-sm" />
           ))}
         </div>
       ) : agents.length === 0 ? (
-        <p className="text-xs font-mono text-[#3a3a44] py-8">
+        <p className="text-xs font-mono text-[var(--text-5)] py-8">
           No agents registered. Start the orchestrator to seed the registry:{' '}
-          <span className="text-[#ef9f27]">cd orchestrator && npm start</span>
+          <span className="text-[var(--accent)]">cd orchestrator && npm start</span>
         </p>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

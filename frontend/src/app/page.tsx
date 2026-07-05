@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { getMetrics, submitJob } from '@/lib/api';
@@ -23,16 +23,15 @@ function truncAddr(a: string) { return `${a.slice(0, 6)}…${a.slice(-4)}`; }
 function statusDot(status: string): string {
   const colors: Record<string, string> = {
     completed: '#22c55e',
-    settled: '#22c55e',
-    running: '#ef9f27',
-    planning: '#60a5fa',
-    settling: '#facc15',
-    failed: '#ef4444',
-    pending: '#4b5563',
+    settled:   '#22c55e',
+    running:   '#ef9f27',
+    planning:  '#60a5fa',
+    settling:  '#facc15',
+    failed:    '#ef4444',
+    pending:   '#9ca3af',
   };
-  return colors[status] ?? '#4b5563';
+  return colors[status] ?? '#9ca3af';
 }
-
 
 export default function Home() {
   const { address, balance, connect, connecting, sendPayment } = useWallet();
@@ -45,6 +44,7 @@ export default function Home() {
   const [buyerTxHash, setBuyerTxHash] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [recentJobs, setRecentJobs] = useState<Job[]>([]);
+  const submittingRef = useRef(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -60,7 +60,6 @@ export default function Home() {
     return () => clearInterval(t);
   }, [refresh]);
 
-  // Reset approval when description changes
   useEffect(() => { setApproved(false); setApproving(false); setBuyerTxHash(null); }, [description]);
 
   const estimatedCost = description.trim()
@@ -71,6 +70,8 @@ export default function Home() {
     e.preventDefault();
     if (!description.trim()) { console.warn('[Submit] blocked: empty description'); return; }
     if (!address) { console.warn('[Submit] blocked: no wallet connected'); return; }
+    if (submittingRef.current) { console.warn('[Submit] blocked: already in flight'); return; }
+    submittingRef.current = true;
 
     console.log('[Submit] Starting — wallet:', address, 'description length:', description.trim().length);
     setSubmitting(true);
@@ -94,6 +95,8 @@ export default function Home() {
         ?? 'Failed to submit. Check the browser console for details.';
       console.error('[Submit] Error:', err);
       setError(msg);
+    } finally {
+      submittingRef.current = false;
       setSubmitting(false);
     }
   }
@@ -122,9 +125,9 @@ export default function Home() {
       <section className="grid-bg pt-14 pb-8 px-6 overflow-hidden">
         <div className="max-w-3xl mx-auto text-center mb-6">
           <h1 className="text-5xl md:text-6xl font-bold tracking-tight mb-3">
-            Agent<span className="text-[#ef9f27]">Guild</span>
+            Agent<span className="text-[var(--accent)]">Guild</span>
           </h1>
-          <p className="text-[#6b6b78] text-base max-w-md mx-auto">
+          <p className="text-[var(--text-3)] text-base max-w-md mx-auto">
             The trading floor for AI agents. Submit a job — the Planner decomposes it, routes to specialists, splits payment on Arc.
           </p>
         </div>
@@ -136,14 +139,14 @@ export default function Home() {
 
       {/* Submit */}
       <section className="max-w-2xl mx-auto px-6 py-10">
-        <h2 className="text-sm font-mono text-[#4a4a55] uppercase tracking-widest mb-5">Submit a Job</h2>
+        <h2 className="text-sm font-mono text-[var(--text-4)] uppercase tracking-widest mb-5">Submit a Job</h2>
         <form onSubmit={handleSubmit} className="space-y-3">
           <textarea
             value={description}
             onChange={e => setDescription(e.target.value)}
             placeholder="Describe what you need done — the Planner will break it into steps and assign agents..."
             rows={4}
-            className="w-full bg-[#0d0d14] border border-[rgba(239,159,39,0.15)] rounded-xl px-4 py-3 text-sm text-white placeholder-[#3a3a44] focus:outline-none focus:border-[rgba(239,159,39,0.4)] resize-none transition-colors"
+            className="w-full bg-[var(--surface)] border border-[var(--border-accent-dim)] rounded-xl px-4 py-3 text-sm text-[var(--text-1)] placeholder-[var(--text-5)] focus:outline-none focus:border-[var(--border-accent-mid)] resize-none transition-colors shadow-sm"
           />
 
           {/* Example prompts */}
@@ -153,7 +156,7 @@ export default function Home() {
                 key={i}
                 type="button"
                 onClick={() => setDescription(ex)}
-                className="text-xs px-2 py-1 rounded-md bg-[#0d0d14] border border-[rgba(239,159,39,0.1)] text-[#4a4a55] hover:text-[#a0a0a8] hover:border-[rgba(239,159,39,0.25)] transition-all text-left"
+                className="text-xs px-2 py-1 rounded-md bg-[var(--surface)] border border-[var(--border-accent-dim)] text-[var(--text-4)] hover:text-[var(--text-2)] hover:border-[var(--border-accent-mid)] transition-all text-left"
               >
                 {ex.length > 52 ? ex.slice(0, 52) + '…' : ex}
               </button>
@@ -161,21 +164,21 @@ export default function Home() {
           </div>
 
           {error && (
-            <p className="text-red-400 text-xs bg-red-950/30 border border-red-900/40 rounded-lg px-3 py-2">{error}</p>
+            <p className="text-red-500 dark:text-red-400 text-xs bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/40 rounded-lg px-3 py-2">{error}</p>
           )}
 
           {/* Wallet gate */}
           {!address ? (
-            <div className="flex items-center gap-3 p-4 rounded-xl border border-[rgba(239,159,39,0.15)] bg-[#0d0d14]">
+            <div className="flex items-center gap-3 p-4 rounded-xl border border-[var(--border-accent-dim)] bg-[var(--surface)] shadow-sm">
               <div className="flex-1">
-                <p className="text-sm text-[#a0a0a8]">Connect a wallet to submit a job</p>
-                <p className="text-xs text-[#4a4a55] mt-0.5">Arc Testnet · USDC payment required</p>
+                <p className="text-sm text-[var(--text-2)]">Connect a wallet to submit a job</p>
+                <p className="text-xs text-[var(--text-4)] mt-0.5">Arc Testnet · USDC payment required</p>
               </div>
               <button
                 type="button"
                 onClick={connect}
                 disabled={connecting}
-                className="px-4 py-2 rounded-lg border border-[rgba(239,159,39,0.4)] text-[#ef9f27] text-sm hover:bg-[rgba(239,159,39,0.08)] disabled:opacity-50 transition-colors"
+                className="px-4 py-2 rounded-lg border border-[var(--border-accent-mid)] text-[var(--accent)] text-sm hover:bg-[var(--hover-accent-bg)] disabled:opacity-50 transition-colors"
               >
                 {connecting ? 'Connecting…' : 'Connect Wallet'}
               </button>
@@ -183,23 +186,23 @@ export default function Home() {
           ) : (
             <div className="space-y-2">
               {/* Connected wallet row */}
-              <div className="flex items-center justify-between px-4 py-2.5 rounded-xl bg-[#0d0d14] border border-[rgba(239,159,39,0.12)]">
+              <div className="flex items-center justify-between px-4 py-2.5 rounded-xl bg-[var(--surface)] border border-[var(--border-accent-dim)] shadow-sm">
                 <div className="flex items-center gap-2">
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#ef9f27]" />
-                  <span className="text-xs font-mono text-[#ef9f27]">{truncAddr(address)}</span>
+                  <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent)]" />
+                  <span className="text-xs font-mono text-[var(--accent)]">{truncAddr(address)}</span>
                 </div>
                 {balance && (
-                  <span className="text-xs font-mono text-[#a0a0a8]">
-                    <span className="text-[#ef9f27]">{balance}</span> USDC available
+                  <span className="text-xs font-mono text-[var(--text-2)]">
+                    <span className="text-[var(--accent)]">{balance}</span> USDC available
                   </span>
                 )}
               </div>
 
               {/* Cost estimate */}
               {description.trim() && (
-                <div className="flex items-center justify-between px-4 py-2 rounded-lg bg-[rgba(239,159,39,0.04)] border border-[rgba(239,159,39,0.1)]">
-                  <span className="text-xs text-[#6b6b78]">Estimated cost</span>
-                  <span className="text-xs font-mono text-[#ef9f27]">${estimatedCost} USDC → escrow</span>
+                <div className="flex items-center justify-between px-4 py-2 rounded-lg bg-[var(--tint-accent)] border border-[var(--border-accent-dim)]">
+                  <span className="text-xs text-[var(--text-3)]">Estimated cost</span>
+                  <span className="text-xs font-mono text-[var(--accent)]">${estimatedCost} USDC → escrow</span>
                 </div>
               )}
 
@@ -224,11 +227,11 @@ export default function Home() {
                       setApproving(false);
                     }
                   }}
-                  className="w-full py-3 rounded-xl font-mono text-sm border border-[rgba(239,159,39,0.5)] text-[#ef9f27] hover:bg-[rgba(239,159,39,0.1)] disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                  className="w-full py-3 rounded-xl font-mono text-sm border border-[var(--border-accent-mid)] text-[var(--accent)] hover:bg-[var(--hover-accent-bg)] disabled:opacity-40 disabled:cursor-not-allowed transition-all"
                 >
                   {approving ? (
                     <span className="flex items-center justify-center gap-2">
-                      <span className="w-3.5 h-3.5 border-2 border-[rgba(239,159,39,0.3)] border-t-[#ef9f27] rounded-full animate-spin" />
+                      <span className="w-3.5 h-3.5 border-2 border-[var(--border-accent-dim)] border-t-[var(--accent)] rounded-full animate-spin" />
                       Sending USDC · waiting for confirmation…
                     </span>
                   ) : description.trim() ? `Send $${estimatedCost} USDC & Run →` : 'Enter a job description'}
@@ -254,19 +257,19 @@ export default function Home() {
         </form>
       </section>
 
-      {/* Recent jobs — compact ledger */}
+      {/* Recent jobs */}
       {recentJobs.length > 0 && (
         <section className="max-w-2xl mx-auto px-6 pb-16">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-xs font-mono text-[#4a4a55] uppercase tracking-widest">Recent Jobs</h2>
-            <Link href="/jobs" className="text-xs text-[#ef9f27] hover:text-[#d68f22] transition-colors font-mono">
+            <h2 className="text-xs font-mono text-[var(--text-4)] uppercase tracking-widest">Recent Jobs</h2>
+            <Link href="/jobs" className="text-xs text-[var(--accent)] hover:text-[var(--accent-hover)] transition-colors font-mono">
               view all →
             </Link>
           </div>
-          <div className="rounded-xl border border-[rgba(239,159,39,0.1)] overflow-hidden">
+          <div className="rounded-xl border border-[var(--border-accent-dim)] overflow-hidden shadow-sm">
             <table className="w-full text-xs">
               <thead>
-                <tr className="border-b border-[rgba(239,159,39,0.08)] text-[#3a3a44]">
+                <tr className="border-b border-[var(--border-subtle)] text-[var(--text-4)]">
                   <th className="text-left font-mono font-normal px-4 py-2 w-20">ID</th>
                   <th className="text-left font-normal px-2 py-2">Description</th>
                   <th className="text-center font-normal px-2 py-2 w-6">St</th>
@@ -277,15 +280,15 @@ export default function Home() {
                 {recentJobs.map((job, i) => (
                   <tr
                     key={job.id}
-                    className={`border-b border-[rgba(239,159,39,0.05)] last:border-0 hover:bg-[rgba(239,159,39,0.04)] transition-colors ${i % 2 === 0 ? 'bg-[#050508]' : 'bg-[#080810]'}`}
+                    className={`border-b border-[var(--border-subtle)] last:border-0 hover:bg-[var(--tint-accent)] transition-colors ${i % 2 === 0 ? 'bg-[var(--bg)]' : 'bg-[var(--bg-alt)]'}`}
                   >
                     <td className="px-4 py-2.5">
-                      <Link href={`/jobs/${job.id}`} className="font-mono text-[#4a4a55] hover:text-[#ef9f27] transition-colors">
+                      <Link href={`/jobs/${job.id}`} className="font-mono text-[var(--text-4)] hover:text-[var(--accent)] transition-colors">
                         {job.id.slice(0, 8)}
                       </Link>
                     </td>
                     <td className="px-2 py-2.5 max-w-0">
-                      <Link href={`/jobs/${job.id}`} className="text-[#a0a0a8] hover:text-white transition-colors truncate block">
+                      <Link href={`/jobs/${job.id}`} className="text-[var(--text-2)] hover:text-[var(--text-1)] transition-colors truncate block">
                         {job.description}
                       </Link>
                     </td>
@@ -298,8 +301,8 @@ export default function Home() {
                     </td>
                     <td className="px-4 py-2.5 text-right font-mono">
                       {job.total_price_usdc != null
-                        ? <span className="text-[#ef9f27]">${job.total_price_usdc.toFixed(4)}</span>
-                        : <span className="text-[#3a3a44]">—</span>
+                        ? <span className="text-[var(--accent)]">${job.total_price_usdc.toFixed(4)}</span>
+                        : <span className="text-[var(--text-5)]">—</span>
                       }
                     </td>
                   </tr>
@@ -310,9 +313,8 @@ export default function Home() {
         </section>
       )}
 
-      {/* No orchestrator state — no empty bordered box, just a line */}
       {!metrics && (
-        <p className="max-w-2xl mx-auto px-6 pb-16 text-xs font-mono text-[#2a2a33] text-center">
+        <p className="max-w-2xl mx-auto px-6 pb-16 text-xs font-mono text-[var(--text-6)] text-center">
           orchestrator offline — run: cd orchestrator && npm start
         </p>
       )}

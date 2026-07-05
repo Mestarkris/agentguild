@@ -2,21 +2,83 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── Light (default) ── */
 :root {
-  --amber: #ef9f27;
-  --bg: #050508;
-  --surface: #0d0d14;
+  --bg:          #f2f0eb;
+  --bg-alt:      #ece9e3;
+  --surface:     #ffffff;
+  --surface-hi:  #f7f5f0;
+  --surface-2:   #f4f2ed;
+
+  --text-1: #0f0e0a;
+  --text-2: #2e2820;
+  --text-3: #3d3028;
+  --text-4: #52443c;
+  --text-5: #6b5a50;
+  --text-6: #857065;
+
+  --accent:       #92400e;
+  --accent-hover: #7c3500;
+  --accent-fill:  #c07010;
+  --accent-rgb:   146, 64, 14;
+  --divider:      rgba(0, 0, 0, 0.10);
+
+  /* Border helpers — theme-aware */
+  --border-accent-dim: rgba(146, 64, 14, 0.18);
+  --border-accent-mid: rgba(146, 64, 14, 0.32);
+  --border-subtle:     rgba(0, 0, 0, 0.08);
+
+  /* Bg tints — for hover states and muted fills */
+  --hover-accent-bg: rgba(146, 64, 14, 0.07);
+  --tint-accent:     rgba(146, 64, 14, 0.04);
+}
+
+/* ── Dark ── */
+html.dark {
+  --bg:          #050508;
+  --bg-alt:      #080810;
+  --surface:     #0d0d14;
+  --surface-hi:  #0f0f18;
+  --surface-2:   #0a0a0f;
+
+  --text-1: #ffffff;
+  --text-2: #a0a0a8;
+  --text-3: #6b6b78;
+  --text-4: #4a4a55;
+  --text-5: #3a3a44;
+  --text-6: #2a2a33;
+
+  --accent:       #ef9f27;
+  --accent-hover: #d68f22;
+  --accent-fill:  #ef9f27;
+  --accent-rgb:   239, 159, 39;
+  --divider:      rgba(255, 255, 255, 0.06);
+
+  --border-accent-dim: rgba(239, 159, 39, 0.15);
+  --border-accent-mid: rgba(239, 159, 39, 0.40);
+  --border-subtle:     rgba(239, 159, 39, 0.08);
+
+  --hover-accent-bg: rgba(239, 159, 39, 0.08);
+  --tint-accent:     rgba(239, 159, 39, 0.04);
 }
 
 body {
   background: var(--bg);
-  color: white;
+  color: var(--text-1);
+}
+
+/* Nav with backdrop — built-in opacity so bg-[var()] works without /opacity modifier */
+.nav-surface {
+  background: rgba(242, 240, 235, 0.92);
+}
+html.dark .nav-surface {
+  background: rgba(5, 5, 8, 0.92);
 }
 
 .grid-bg {
   background-image:
-    linear-gradient(rgba(239, 159, 39, 0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(239, 159, 39, 0.03) 1px, transparent 1px);
+    linear-gradient(rgba(var(--accent-rgb), 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(var(--accent-rgb), 0.03) 1px, transparent 1px);
   background-size: 60px 60px;
 }
 
@@ -25,11 +87,11 @@ body {
 }
 
 @keyframes nodePulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(239, 159, 39, 0.4); }
-  50% { box-shadow: 0 0 0 8px rgba(239, 159, 39, 0); }
+  0%, 100% { box-shadow: 0 0 0 0 rgba(var(--accent-rgb), 0.4); }
+  50%       { box-shadow: 0 0 0 8px rgba(var(--accent-rgb), 0); }
 }
 
 @keyframes ticker {
   from { transform: translateX(0); }
-  to { transform: translateX(-50%); }
+  to   { transform: translateX(-50%); }
 }

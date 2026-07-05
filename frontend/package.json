@@ -20,6 +20,7 @@
     "pdfkit": "^0.19.1",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
+    "react-is": "^19.2.7",
     "react-markdown": "^10.1.0",
     "recharts": "^3.9.1",
     "sql.js": "^1.14.1",

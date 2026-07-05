@@ -12,7 +12,7 @@ const STATUS_COLOR: Record<string, string> = {
   planning:  '#60a5fa',
   settling:  '#facc15',
   failed:    '#ef4444',
-  pending:   '#3a3a44',
+  pending:   '#9ca3af',
 };
 
 const ACTIVE = new Set(['running', 'planning', 'settling']);
@@ -43,12 +43,12 @@ export default function JobsPage() {
       {/* Header */}
       <div className="mb-8 flex items-center justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-2xl font-bold text-white mb-0.5">Job Ledger</h1>
-          <p className="text-xs font-mono text-[#4a4a55]">{jobs.length} total · refreshes every 5s</p>
+          <h1 className="text-2xl font-bold text-[var(--text-1)] mb-0.5">Job Ledger</h1>
+          <p className="text-xs font-mono text-[var(--text-4)]">{jobs.length} total · refreshes every 5s</p>
         </div>
         <Link
           href="/"
-          className="px-3 py-1.5 rounded-md border border-[rgba(239,159,39,0.3)] text-xs font-mono text-[#ef9f27] hover:bg-[rgba(239,159,39,0.08)] transition-colors"
+          className="px-3 py-1.5 rounded-md border border-[var(--border-accent-dim)] text-xs font-mono text-[var(--accent)] hover:bg-[var(--tint-accent)] transition-colors"
         >
           + Submit Job
         </Link>
@@ -62,8 +62,8 @@ export default function JobsPage() {
             onClick={() => setFilter(s)}
             className={`px-3 py-1 rounded text-xs font-mono transition-colors ${
               filter === s
-                ? 'bg-[rgba(239,159,39,0.12)] text-[#ef9f27]'
-                : 'text-[#4a4a55] hover:text-[#a0a0a8]'
+                ? 'bg-[var(--hover-accent-bg)] text-[var(--accent)]'
+                : 'text-[var(--text-4)] hover:text-[var(--text-2)]'
             }`}
           >
             {s} <span className="opacity-50">({count(s)})</span>
@@ -73,23 +73,23 @@ export default function JobsPage() {
 
       {/* Table */}
       {loading ? (
-        <p className="text-xs font-mono text-[#3a3a44] py-8">Loading…</p>
+        <p className="text-xs font-mono text-[var(--text-5)] py-8">Loading…</p>
       ) : filtered.length === 0 ? (
-        <p className="text-xs font-mono text-[#3a3a44] py-8">
+        <p className="text-xs font-mono text-[var(--text-5)] py-8">
           {filter !== 'all' ? `No ${filter} jobs.` : 'No jobs yet.'}{' '}
-          <Link href="/" className="text-[#ef9f27] hover:text-[#d68f22]">Submit one →</Link>
+          <Link href="/" className="text-[var(--accent)] hover:text-[var(--accent-hover)]">Submit one →</Link>
         </p>
       ) : (
-        <div className="rounded-xl border border-[rgba(239,159,39,0.1)] overflow-hidden">
+        <div className="rounded-xl border border-[var(--border-accent-dim)] overflow-hidden shadow-sm">
           <table className="w-full text-xs">
             <thead>
-              <tr className="border-b border-[rgba(239,159,39,0.08)]">
-                <th className="text-left font-mono font-normal text-[#3a3a44] px-4 py-2.5 w-24">JOB ID</th>
-                <th className="text-left font-normal text-[#3a3a44] px-2 py-2.5">DESCRIPTION</th>
-                <th className="text-center font-normal text-[#3a3a44] px-2 py-2.5 w-8">ST</th>
-                <th className="text-right font-mono font-normal text-[#3a3a44] px-2 py-2.5 w-32">USDC</th>
-                <th className="text-right font-mono font-normal text-[#3a3a44] px-2 py-2.5 w-20">SUBMITTED</th>
-                <th className="text-right font-mono font-normal text-[#3a3a44] px-4 py-2.5 w-16">DUR</th>
+              <tr className="border-b border-[var(--border-subtle)]">
+                <th className="text-left font-mono font-normal text-[var(--text-4)] px-4 py-2.5 w-24">JOB ID</th>
+                <th className="text-left font-normal text-[var(--text-4)] px-2 py-2.5">DESCRIPTION</th>
+                <th className="text-center font-normal text-[var(--text-4)] px-2 py-2.5 w-8">ST</th>
+                <th className="text-right font-mono font-normal text-[var(--text-4)] px-2 py-2.5 w-32">USDC</th>
+                <th className="text-right font-mono font-normal text-[var(--text-4)] px-2 py-2.5 w-20">SUBMITTED</th>
+                <th className="text-right font-mono font-normal text-[var(--text-4)] px-4 py-2.5 w-16">DUR</th>
               </tr>
             </thead>
             <tbody>
@@ -98,14 +98,14 @@ export default function JobsPage() {
                 return (
                   <tr
                     key={job.id}
-                    className={`border-b border-[rgba(239,159,39,0.05)] last:border-0 hover:bg-[rgba(239,159,39,0.04)] transition-colors ${
-                      i % 2 === 0 ? 'bg-[#050508]' : 'bg-[#080810]'
+                    className={`border-b border-[var(--border-subtle)] last:border-0 hover:bg-[var(--tint-accent)] transition-colors ${
+                      i % 2 === 0 ? 'bg-[var(--bg)]' : 'bg-[var(--bg-alt)]'
                     }`}
                   >
                     <td className="px-4 py-3">
                       <Link
                         href={`/jobs/${job.id}`}
-                        className="font-mono text-[#4a4a55] hover:text-[#ef9f27] transition-colors"
+                        className="font-mono text-[var(--text-4)] hover:text-[var(--accent)] transition-colors"
                       >
                         {job.id.slice(0, 8)}
                       </Link>
@@ -113,7 +113,7 @@ export default function JobsPage() {
                     <td className="px-2 py-3 max-w-0">
                       <Link
                         href={`/jobs/${job.id}`}
-                        className="text-[#a0a0a8] hover:text-white transition-colors truncate block"
+                        className="text-[var(--text-2)] hover:text-[var(--text-1)] transition-colors truncate block"
                       >
                         {job.description}
                       </Link>
@@ -121,25 +121,25 @@ export default function JobsPage() {
                     <td className="px-2 py-3 text-center">
                       <span
                         className={`inline-block w-2 h-2 rounded-full ${isActive ? 'animate-pulse' : ''}`}
-                        style={{ background: STATUS_COLOR[job.status] ?? '#3a3a44' }}
+                        style={{ background: STATUS_COLOR[job.status] ?? '#9ca3af' }}
                         title={job.status}
                       />
                     </td>
                     <td className="px-2 py-3 text-right font-mono">
                       {job.total_price_usdc != null
-                        ? <span className="text-[#ef9f27]">${job.total_price_usdc.toFixed(5)}</span>
-                        : <span className="text-[#2a2a33]">—</span>
+                        ? <span className="text-[var(--accent)]">${job.total_price_usdc.toFixed(5)}</span>
+                        : <span className="text-[var(--text-6)]">—</span>
                       }
                     </td>
-                    <td className="px-2 py-3 text-right font-mono text-[#4a4a55]">
+                    <td className="px-2 py-3 text-right font-mono text-[var(--text-4)]">
                       {new Date(job.submitted_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </td>
                     <td className="px-4 py-3 text-right font-mono">
                       {job.completed_at
-                        ? <span className="text-[#4a4a55]">{elapsed(job.submitted_at, job.completed_at)}</span>
+                        ? <span className="text-[var(--text-4)]">{elapsed(job.submitted_at, job.completed_at)}</span>
                         : isActive
-                        ? <span className="text-[#ef9f27] animate-pulse">{elapsed(job.submitted_at, null)}</span>
-                        : <span className="text-[#2a2a33]">—</span>
+                        ? <span className="text-[var(--accent)] animate-pulse">{elapsed(job.submitted_at, null)}</span>
+                        : <span className="text-[var(--text-6)]">—</span>
                       }
                     </td>
                   </tr>

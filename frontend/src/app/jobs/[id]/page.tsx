@@ -52,7 +52,6 @@ function FinalResult({ result, status, subtasks }: {
     .filter(st => st.status === 'completed' || st.status === 'settled')
     .sort((a, b) => a.position - b.position);
 
-  // For failed jobs that got partway, surface the last completed output
   const displayResult = result ?? (status === 'failed' ? completedSubs.at(-1)?.result ?? null : null);
   const isPartial = !result && !!displayResult;
 
@@ -71,40 +70,40 @@ function FinalResult({ result, status, subtasks }: {
       animate={{ opacity: 1, y: 0 }}
       className={`mb-8 rounded-xl border p-5 ${
         isPartial
-          ? 'border-amber-500/40 bg-amber-950/10'
-          : 'border-cyan-400/40 bg-slate-900/80'
+          ? 'border-amber-500/40 bg-amber-50 dark:bg-amber-950/10'
+          : 'border-cyan-400/40 bg-[var(--surface)]'
       }`}
     >
       <div className="flex items-center justify-between gap-3 mb-4">
         <div className="flex items-center gap-2 min-w-0">
-          <span className="text-base font-bold text-white shrink-0">
+          <span className="text-base font-bold text-[var(--text-1)] shrink-0">
             {isPartial ? 'Partial Result' : 'Result'}
           </span>
           {isPartial ? (
-            <span className="text-xs text-amber-400/80 truncate">
+            <span className="text-xs text-amber-600 dark:text-amber-400 truncate">
               job failed · last completed step: {completedSubs.at(-1)?.skill}
             </span>
           ) : (
-            <span className="text-xs text-slate-500 truncate">
+            <span className="text-xs text-[var(--text-4)] truncate">
               · via {subtasks.length} agent{subtasks.length !== 1 ? 's' : ''}
             </span>
           )}
         </div>
         <button
           onClick={copy}
-          className="shrink-0 text-xs px-2.5 py-1 rounded-lg border border-slate-700 hover:border-slate-500 text-slate-400 hover:text-white transition-colors font-mono"
+          className="shrink-0 text-xs px-2.5 py-1 rounded-lg border border-[var(--border-accent-dim)] hover:border-[var(--border-accent-mid)] text-[var(--text-3)] hover:text-[var(--text-1)] transition-colors font-mono"
         >
           {copied ? '✓ Copied' : 'Copy'}
         </button>
       </div>
-      <div className="text-sm text-slate-100 leading-relaxed prose prose-invert prose-sm max-w-none">
+      <div className="text-sm text-[var(--text-2)] leading-relaxed prose dark:prose-invert prose-sm max-w-none">
         <ReactMarkdown>{displayResult}</ReactMarkdown>
       </div>
     </motion.div>
   );
 }
 
-// ─── Failure breakdown (what completed vs what didn't) ────────────────────────
+// ─── Failure breakdown ────────────────────────────────────────────────────────
 
 function FailureSummary({ subtasks }: { subtasks: Subtask[] }) {
   const failed = subtasks.filter(st => st.status === 'failed');
@@ -113,8 +112,8 @@ function FailureSummary({ subtasks }: { subtasks: Subtask[] }) {
   const completed = subtasks.filter(st => st.status === 'completed' || st.status === 'settled');
 
   return (
-    <div className="mb-6 rounded-xl border border-red-900/40 bg-red-950/10 p-4">
-      <p className="text-xs font-semibold text-red-400 mb-2">
+    <div className="mb-6 rounded-xl border border-red-900/40 bg-red-50 dark:bg-red-950/10 p-4">
+      <p className="text-xs font-semibold text-red-500 dark:text-red-400 mb-2">
         {completed.length} of {subtasks.length} step{subtasks.length !== 1 ? 's' : ''} completed
       </p>
       <div className="space-y-1 text-xs">
@@ -123,10 +122,10 @@ function FailureSummary({ subtasks }: { subtasks: Subtask[] }) {
           const isFailed = st.status === 'failed';
           return (
             <div key={st.id} className="flex items-start gap-2">
-              <span className={`shrink-0 mt-0.5 font-mono ${isDone ? 'text-green-400' : isFailed ? 'text-red-400' : 'text-slate-600'}`}>
+              <span className={`shrink-0 mt-0.5 font-mono ${isDone ? 'text-green-600 dark:text-green-400' : isFailed ? 'text-red-500 dark:text-red-400' : 'text-[var(--text-5)]'}`}>
                 {isDone ? '✓' : isFailed ? '✗' : '○'}
               </span>
-              <span className="text-slate-400">
+              <span className="text-[var(--text-3)]">
                 {SKILL_EMOJI[st.skill] ?? '🤖'} {st.skill}
               </span>
               {isFailed && st.result && (
@@ -157,18 +156,18 @@ function SubtaskNode({ st, index, total }: { st: Subtask; index: number; total: 
       className="relative"
     >
       {index < total - 1 && (
-        <div className="absolute left-6 top-full w-0.5 h-4 bg-slate-800 z-0" />
+        <div className="absolute left-6 top-full w-0.5 h-4 bg-[var(--divider)] z-0" />
       )}
 
       <div
         className={`relative rounded-xl border transition-all ${
           isRunning
-            ? 'border-cyan-500/60 bg-cyan-950/30 node-pulse'
+            ? 'border-cyan-500/60 bg-cyan-50 dark:bg-cyan-950/30 node-pulse'
             : isDone
-            ? 'border-green-500/30 bg-green-950/10'
+            ? 'border-green-500/30 bg-green-50/50 dark:bg-green-950/10'
             : isFailed
-            ? 'border-red-500/30 bg-red-950/10'
-            : 'border-slate-800 bg-slate-900/60'
+            ? 'border-red-500/30 bg-red-50/50 dark:bg-red-950/10'
+            : 'border-[var(--border-accent-dim)] bg-[var(--surface)]'
         }`}
       >
         <div
@@ -176,13 +175,13 @@ function SubtaskNode({ st, index, total }: { st: Subtask; index: number; total: 
           onClick={() => (isDone || isFailed) && setExpanded(e => !e)}
         >
           <div className={`shrink-0 w-10 h-10 rounded-full flex items-center justify-center text-lg border-2 ${
-            isRunning ? 'border-cyan-400 bg-cyan-950' :
-            isDone ? 'border-green-500 bg-green-950' :
-            isFailed ? 'border-red-500 bg-red-950' :
-            'border-slate-700 bg-slate-800'
+            isRunning ? 'border-cyan-400 bg-cyan-50 dark:bg-cyan-950' :
+            isDone ? 'border-green-500 bg-green-50 dark:bg-green-950' :
+            isFailed ? 'border-red-500 bg-red-50 dark:bg-red-950' :
+            'border-[var(--border-accent-dim)] bg-[var(--bg-alt)]'
           }`}>
             {isPending ? (
-              <span className="text-xs text-slate-500 font-bold">{st.position}</span>
+              <span className="text-xs text-[var(--text-5)] font-bold">{st.position}</span>
             ) : isRunning ? (
               <span className="animate-spin text-xs">⚙️</span>
             ) : isDone ? (
@@ -196,29 +195,29 @@ function SubtaskNode({ st, index, total }: { st: Subtask; index: number; total: 
 
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-sm font-semibold text-white">
+              <span className="text-sm font-semibold text-[var(--text-1)]">
                 {SKILL_EMOJI[st.skill]} {st.skill}
               </span>
               {st.agent_name && (
-                <span className="text-xs text-slate-500 font-mono">{st.agent_name}</span>
+                <span className="text-xs text-[var(--text-4)] font-mono">{st.agent_name}</span>
               )}
               <StatusBadge status={st.status} />
             </div>
-            <p className="text-xs text-slate-500 mt-1 truncate">{st.prompt}</p>
+            <p className="text-xs text-[var(--text-4)] mt-1 truncate">{st.prompt}</p>
           </div>
 
           <div className="text-right shrink-0">
             {st.payment_usdc != null && (
-              <div className="text-sm font-bold text-cyan-400 font-mono">${st.payment_usdc.toFixed(5)}</div>
+              <div className="text-sm font-bold text-cyan-600 dark:text-cyan-400 font-mono">${st.payment_usdc.toFixed(5)}</div>
             )}
             {st.contribution_pct != null && (
-              <div className="text-xs text-slate-500">{(st.contribution_pct * 100).toFixed(1)}%</div>
+              <div className="text-xs text-[var(--text-4)]">{(st.contribution_pct * 100).toFixed(1)}%</div>
             )}
             {isRunning && (
-              <div className="text-xs text-cyan-400 animate-pulse">working…</div>
+              <div className="text-xs text-cyan-600 dark:text-cyan-400 animate-pulse">working…</div>
             )}
             {(isDone || isFailed) && (
-              <div className="text-xs text-slate-600 mt-1">{elapsed(st.started_at, st.completed_at)}</div>
+              <div className="text-xs text-[var(--text-5)] mt-1">{elapsed(st.started_at, st.completed_at)}</div>
             )}
           </div>
         </div>
@@ -231,11 +230,11 @@ function SubtaskNode({ st, index, total }: { st: Subtask; index: number; total: 
               exit={{ height: 0, opacity: 0 }}
               className="overflow-hidden"
             >
-              <div className="px-4 pb-4 space-y-3 border-t border-slate-800/60 pt-3">
+              <div className="px-4 pb-4 space-y-3 border-t border-[var(--border-subtle)] pt-3">
                 {st.result && (
                   <div>
-                    <div className="text-xs text-slate-500 mb-1 uppercase tracking-wide">Output</div>
-                    <div className="text-xs text-slate-300 bg-slate-950 rounded-lg p-3 overflow-auto max-h-56 prose prose-invert prose-xs max-w-none">
+                    <div className="text-xs text-[var(--text-4)] mb-1 uppercase tracking-wide">Output</div>
+                    <div className="text-xs text-[var(--text-2)] bg-[var(--bg)] rounded-lg p-3 overflow-auto max-h-56 prose dark:prose-invert prose-xs max-w-none">
                       <ReactMarkdown>{st.result}</ReactMarkdown>
                     </div>
                   </div>
@@ -268,15 +267,15 @@ function SubtaskNode({ st, index, total }: { st: Subtask; index: number; total: 
 
 function Chip({ label, value, mono, href }: { label: string; value: string; mono?: boolean; href?: string }) {
   return (
-    <div className="bg-slate-900 rounded-lg px-2.5 py-1.5">
-      <div className="text-slate-500">{label}</div>
+    <div className="bg-[var(--bg)] rounded-lg px-2.5 py-1.5">
+      <div className="text-[var(--text-4)]">{label}</div>
       {href ? (
         <a href={href} target="_blank" rel="noopener noreferrer"
-          className={`text-cyan-400 hover:text-cyan-300 mt-0.5 block transition-colors ${mono ? 'font-mono' : 'font-medium'}`}>
+          className={`text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 mt-0.5 block transition-colors ${mono ? 'font-mono' : 'font-medium'}`}>
           {value} ↗
         </a>
       ) : (
-        <div className={`text-white mt-0.5 ${mono ? 'font-mono' : 'font-medium'}`}>{value}</div>
+        <div className={`text-[var(--text-1)] mt-0.5 ${mono ? 'font-mono' : 'font-medium'}`}>{value}</div>
       )}
     </div>
   );
@@ -292,11 +291,11 @@ function PaymentSummary({ subtasks, total }: { subtasks: Subtask[]; total: numbe
     <motion.div
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
-      className="rounded-xl border border-slate-700 bg-slate-900/60 p-5"
+      className="rounded-xl border border-[var(--border-accent-dim)] bg-[var(--surface)] p-5 shadow-sm"
     >
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-sm font-semibold text-white">Payment Settlement</h3>
-        <div className="text-cyan-400 font-bold font-mono">${total.toFixed(5)} USDC</div>
+        <h3 className="text-sm font-semibold text-[var(--text-1)]">Payment Settlement</h3>
+        <div className="text-cyan-600 dark:text-cyan-400 font-bold font-mono">${total.toFixed(5)} USDC</div>
       </div>
       <div className="space-y-3">
         {settled.map((st, i) => {
@@ -311,27 +310,27 @@ function PaymentSummary({ subtasks, total }: { subtasks: Subtask[]; total: numbe
               <div className="flex items-center justify-between text-xs mb-1">
                 <div className="flex items-center gap-2">
                   <span>{SKILL_EMOJI[st.skill] ?? '🤖'}</span>
-                  <span className="text-slate-300">{st.agent_name ?? st.skill}</span>
+                  <span className="text-[var(--text-2)]">{st.agent_name ?? st.skill}</span>
                   {st.payment_tx && (() => {
                     const href = txLink(st.payment_tx);
                     const label = truncateTx(st.payment_tx);
                     return href ? (
                       <a href={href} target="_blank" rel="noopener noreferrer"
-                        className="text-cyan-700 hover:text-cyan-400 font-mono transition-colors"
+                        className="text-cyan-700 dark:text-cyan-500 hover:text-cyan-500 dark:hover:text-cyan-300 font-mono transition-colors"
                         title={st.payment_tx}>
                         {label} ↗
                       </a>
                     ) : (
-                      <span className="text-slate-600 font-mono" title={st.payment_tx}>{label}</span>
+                      <span className="text-[var(--text-5)] font-mono" title={st.payment_tx}>{label}</span>
                     );
                   })()}
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="text-slate-500">{(pct * 100).toFixed(1)}%</span>
-                  <span className="text-cyan-400 font-bold font-mono">${st.payment_usdc!.toFixed(5)}</span>
+                  <span className="text-[var(--text-4)]">{(pct * 100).toFixed(1)}%</span>
+                  <span className="text-cyan-600 dark:text-cyan-400 font-bold font-mono">${st.payment_usdc!.toFixed(5)}</span>
                 </div>
               </div>
-              <div className="h-1.5 rounded-full bg-slate-800 overflow-hidden">
+              <div className="h-1.5 rounded-full bg-[var(--bg-alt)] overflow-hidden">
                 <motion.div
                   className="h-full rounded-full bg-gradient-to-r from-cyan-500 to-violet-500"
                   initial={{ width: 0 }}
@@ -343,7 +342,7 @@ function PaymentSummary({ subtasks, total }: { subtasks: Subtask[]; total: numbe
           );
         })}
       </div>
-      <p className="text-xs text-slate-600 mt-3 text-center">Settled on Arc Testnet (chain 1111)</p>
+      <p className="text-xs text-[var(--text-5)] mt-3 text-center">Settled on Arc Testnet (chain 1111)</p>
     </motion.div>
   );
 }
@@ -367,7 +366,6 @@ export default function JobPage() {
       }
     } catch (e: unknown) {
       if ((e as { response?: { status?: number } })?.response?.status === 404) {
-        // Vercel Blob has propagation lag — retry several times before giving up
         notFoundCountRef.current += 1;
         if (notFoundCountRef.current >= 5) {
           if (pollingRef.current) clearInterval(pollingRef.current);
@@ -387,8 +385,8 @@ export default function JobPage() {
     return (
       <div className="max-w-2xl mx-auto px-6 py-20 text-center">
         <p className="text-4xl mb-3">🔍</p>
-        <p className="text-slate-400">Job not found</p>
-        <Link href="/" className="text-cyan-400 text-sm mt-4 block">← Back to home</Link>
+        <p className="text-[var(--text-3)]">Job not found</p>
+        <Link href="/" className="text-[var(--accent)] text-sm mt-4 block">← Back to home</Link>
       </div>
     );
   }
@@ -396,8 +394,8 @@ export default function JobPage() {
   if (!job) {
     return (
       <div className="max-w-2xl mx-auto px-6 py-20 text-center">
-        <div className="w-8 h-8 border-2 border-slate-700 border-t-cyan-400 rounded-full animate-spin mx-auto mb-4" />
-        <p className="text-slate-500 text-sm">Loading job…</p>
+        <div className="w-8 h-8 border-2 border-[var(--border-accent-dim)] border-t-[var(--accent)] rounded-full animate-spin mx-auto mb-4" />
+        <p className="text-[var(--text-4)] text-sm">Loading job…</p>
       </div>
     );
   }
@@ -410,41 +408,41 @@ export default function JobPage() {
 
       {/* ── Header ── */}
       <div className="mb-8">
-        <Link href="/jobs" className="text-xs text-slate-600 hover:text-slate-400 transition-colors mb-4 block">← All Jobs</Link>
+        <Link href="/jobs" className="text-xs text-[var(--text-5)] hover:text-[var(--text-3)] transition-colors mb-4 block">← All Jobs</Link>
 
         <div className="flex items-start gap-3 mb-3">
           <StatusBadge status={job.status} size="md" />
-          {isActive && <span className="text-xs text-slate-500 animate-pulse pt-1">Polling…</span>}
+          {isActive && <span className="text-xs text-[var(--text-4)] animate-pulse pt-1">Polling…</span>}
         </div>
 
-        <h1 className="text-xl font-semibold text-white mb-1 leading-snug">{job.description}</h1>
+        <h1 className="text-xl font-semibold text-[var(--text-1)] mb-1 leading-snug">{job.description}</h1>
 
-        <div className="flex items-center gap-4 text-xs text-slate-500 mt-2">
+        <div className="flex items-center gap-4 text-xs text-[var(--text-4)] mt-2">
           <span className="font-mono">{job.id.slice(0, 8)}</span>
           <span>{new Date(job.submitted_at).toLocaleString()}</span>
           {job.total_price_usdc != null && (
-            <span className="text-cyan-400 font-bold">${job.total_price_usdc.toFixed(5)} USDC</span>
+            <span className="text-cyan-600 dark:text-cyan-400 font-bold">${job.total_price_usdc.toFixed(5)} USDC</span>
           )}
         </div>
 
         {job.error && (
-          <div className="mt-3 text-sm text-red-400 bg-red-900/20 border border-red-900/40 rounded-lg px-3 py-2">
+          <div className="mt-3 text-sm text-red-500 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-900/40 rounded-lg px-3 py-2">
             {job.error}
           </div>
         )}
       </div>
 
-      {/* ── Final result — the main event, shown before the pipeline ── */}
+      {/* ── Final result ── */}
       {DONE.has(job.status) && (
         <FinalResult result={job.result} status={job.status} subtasks={subtasks} />
       )}
 
-      {/* ── Failure breakdown: which steps completed vs didn't ── */}
+      {/* ── Failure breakdown ── */}
       {job.status === 'failed' && subtasks.length > 0 && (
         <FailureSummary subtasks={subtasks} />
       )}
 
-      {/* ── Phase timeline (no subtasks yet, job still active) ── */}
+      {/* ── Phase timeline (no subtasks yet) ── */}
       {subtasks.length === 0 && !DONE.has(job.status) && (
         <div className="space-y-2 mb-8">
           {(['pending', 'planning', 'running'] as const).map(phase => {
@@ -455,13 +453,13 @@ export default function JobPage() {
             const done = thisPhaseIdx < jobPhaseIdx;
             return (
               <div key={phase} className={`flex items-center gap-3 rounded-lg px-4 py-3 border ${
-                active ? 'border-cyan-500/40 bg-cyan-950/20' :
+                active ? 'border-cyan-500/40 bg-cyan-50/50 dark:bg-cyan-950/20' :
                 done ? 'border-green-500/20 bg-transparent' :
-                'border-slate-800 bg-transparent opacity-40'
+                'border-[var(--border-accent-dim)] bg-transparent opacity-40'
               }`}>
-                <div className={`w-2 h-2 rounded-full ${active ? 'bg-cyan-400 animate-pulse' : done ? 'bg-green-500' : 'bg-slate-700'}`} />
-                <span className="text-sm capitalize text-slate-300">{phase}</span>
-                {active && <span className="text-xs text-slate-500 ml-auto">in progress…</span>}
+                <div className={`w-2 h-2 rounded-full ${active ? 'bg-cyan-500 animate-pulse' : done ? 'bg-green-500' : 'bg-[var(--text-5)]'}`} />
+                <span className="text-sm capitalize text-[var(--text-2)]">{phase}</span>
+                {active && <span className="text-xs text-[var(--text-4)] ml-auto">in progress…</span>}
                 {done && <span className="text-xs text-green-500 ml-auto">✓</span>}
               </div>
             );
@@ -469,16 +467,16 @@ export default function JobPage() {
         </div>
       )}
 
-      {/* ── Subtask pipeline (transparency / expandable details) ── */}
+      {/* ── Subtask pipeline ── */}
       {subtasks.length > 0 && (
         <div className="space-y-3 mb-8">
-          <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+          <h2 className="text-xs font-semibold text-[var(--text-4)] uppercase tracking-wide">
             Execution Pipeline · {subtasks.length} subtask{subtasks.length !== 1 ? 's' : ''}
           </h2>
           {subtasks.map((st, i) => (
             <SubtaskNode key={st.id} st={st} index={i} total={subtasks.length} />
           ))}
-          <p className="text-xs text-slate-600 text-center pt-1">
+          <p className="text-xs text-[var(--text-5)] text-center pt-1">
             {DONE.has(job.status)
               ? 'Click any subtask to expand its output'
               : job.status === 'settling'
@@ -488,29 +486,29 @@ export default function JobPage() {
         </div>
       )}
 
-      {/* ── Buyer payment tx (buyer → platform) ── */}
+      {/* ── Buyer payment tx ── */}
       {job.buyer_tx && (
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
-          className="mb-4 rounded-xl border border-emerald-800/40 bg-emerald-950/30 px-4 py-3 flex items-center justify-between gap-3">
+          className="mb-4 rounded-xl border border-emerald-800/40 bg-emerald-50 dark:bg-emerald-950/30 px-4 py-3 flex items-center justify-between gap-3">
           <div>
-            <div className="text-[10px] font-mono text-emerald-500/70 uppercase tracking-wider mb-0.5">Buyer → Platform · USDC on-chain</div>
-            <div className="text-xs font-mono text-emerald-400">{truncateTx(job.buyer_tx)}</div>
+            <div className="text-[10px] font-mono text-emerald-600 dark:text-emerald-500 uppercase tracking-wider mb-0.5">Buyer → Platform · USDC on-chain</div>
+            <div className="text-xs font-mono text-emerald-700 dark:text-emerald-400">{truncateTx(job.buyer_tx)}</div>
           </div>
           <a href={txLink(job.buyer_tx)} target="_blank" rel="noopener noreferrer"
-            className="text-[10px] font-mono text-emerald-500 hover:text-emerald-300 transition-colors shrink-0">
+            className="text-[10px] font-mono text-emerald-600 dark:text-emerald-500 hover:text-emerald-500 dark:hover:text-emerald-300 transition-colors shrink-0">
             View on Arcscan ↗
           </a>
         </motion.div>
       )}
 
-      {/* ── Payment summary (platform → agents) ── */}
+      {/* ── Payment summary ── */}
       {job.total_price_usdc != null && subtasks.some(s => s.status === 'settled') && (
         <div className="mb-6">
           <PaymentSummary subtasks={subtasks} total={job.total_price_usdc} />
         </div>
       )}
 
-      {/* ── PDF download (Phase D) ── */}
+      {/* ── PDF download ── */}
       {job.status === 'completed' && (
         <motion.div
           initial={{ opacity: 0, y: 8 }}
@@ -521,11 +519,11 @@ export default function JobPage() {
             href={`/api/jobs/${id}/pdf`}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center justify-center gap-2 w-full py-3 rounded-xl border border-[rgba(239,159,39,0.4)] text-[#ef9f27] font-mono text-sm hover:bg-[rgba(239,159,39,0.08)] transition-colors"
+            className="flex items-center justify-center gap-2 w-full py-3 rounded-xl border border-[var(--border-accent-mid)] text-[var(--accent)] font-mono text-sm hover:bg-[var(--hover-accent-bg)] transition-colors"
           >
             ↓ Download result (PDF)
           </a>
-          <p className="text-center text-[10px] font-mono text-[#3a3a44] mt-1">
+          <p className="text-center text-[10px] font-mono text-[var(--text-5)] mt-1">
             Includes job request · agent(s) · output · payment tx hash
           </p>
         </motion.div>
@@ -537,12 +535,12 @@ export default function JobPage() {
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="mt-2 mb-4 rounded-xl border border-green-500/30 bg-green-950/20 p-4 text-center"
+            className="mt-2 mb-4 rounded-xl border border-green-500/30 bg-green-50/50 dark:bg-green-950/20 p-4 text-center"
           >
-            <p className="text-green-400 font-semibold text-sm">
+            <p className="text-green-600 dark:text-green-400 font-semibold text-sm">
               {subtasks.length} agent{subtasks.length !== 1 ? 's' : ''} · ${job.total_price_usdc?.toFixed(5)} USDC settled on Arc
             </p>
-            <Link href="/" className="mt-2 inline-block text-xs text-cyan-400 hover:text-cyan-300 transition-colors">
+            <Link href="/" className="mt-2 inline-block text-xs text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 dark:hover:text-cyan-300 transition-colors">
               Submit another job →
             </Link>
           </motion.div>
@@ -586,7 +584,7 @@ function FlagPanel({ jobId, subtasks }: { jobId: string; subtasks: Subtask[] }) 
       {!open ? (
         <button
           onClick={() => setOpen(true)}
-          className="text-xs text-slate-600 hover:text-red-400 transition-colors border border-slate-800 hover:border-red-900 rounded-lg px-3 py-1.5"
+          className="text-xs text-[var(--text-5)] hover:text-red-500 dark:hover:text-red-400 transition-colors border border-[var(--border-subtle)] hover:border-red-900/40 rounded-lg px-3 py-1.5"
         >
           ⚑ Flag bad output &amp; slash agent bond
         </button>
@@ -594,14 +592,14 @@ function FlagPanel({ jobId, subtasks }: { jobId: string; subtasks: Subtask[] }) 
         <motion.div
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
-          className="rounded-xl border border-red-900/40 bg-red-950/10 p-4 space-y-3"
+          className="rounded-xl border border-red-900/40 bg-red-50 dark:bg-red-950/10 p-4 space-y-3"
         >
           <div className="flex items-center justify-between">
-            <span className="text-sm font-semibold text-red-400">Flag &amp; Slash Agent Bond</span>
-            <button onClick={() => setOpen(false)} className="text-xs text-slate-600 hover:text-slate-400">✕</button>
+            <span className="text-sm font-semibold text-red-500 dark:text-red-400">Flag &amp; Slash Agent Bond</span>
+            <button onClick={() => setOpen(false)} className="text-xs text-[var(--text-5)] hover:text-[var(--text-3)]">✕</button>
           </div>
           {result ? (
-            <div className="text-sm text-green-400">
+            <div className="text-sm text-green-600 dark:text-green-400">
               Slashed ${result.slashed.toFixed(5)} USDC · new bond: ${result.newBond.toFixed(5)}
             </div>
           ) : (
@@ -609,7 +607,7 @@ function FlagPanel({ jobId, subtasks }: { jobId: string; subtasks: Subtask[] }) 
               <select
                 value={selectedAgent}
                 onChange={e => setSelectedAgent(e.target.value)}
-                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white"
+                className="w-full bg-[var(--bg)] border border-[var(--border-accent-dim)] rounded-lg px-3 py-2 text-sm text-[var(--text-1)]"
               >
                 <option value="">Select agent to flag…</option>
                 {settled.map(s => (
@@ -621,12 +619,12 @@ function FlagPanel({ jobId, subtasks }: { jobId: string; subtasks: Subtask[] }) 
                 placeholder="Reason (e.g. hallucinated facts, wrong language)"
                 value={reason}
                 onChange={e => setReason(e.target.value)}
-                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-600"
+                className="w-full bg-[var(--bg)] border border-[var(--border-accent-dim)] rounded-lg px-3 py-2 text-sm text-[var(--text-1)] placeholder-[var(--text-5)]"
               />
               <button
                 onClick={handleFlag}
                 disabled={!selectedAgent || !reason.trim() || loading}
-                className="w-full py-2 rounded-lg bg-red-900/50 hover:bg-red-800/50 border border-red-800 text-sm text-red-300 transition-colors disabled:opacity-40"
+                className="w-full py-2 rounded-lg bg-red-100 dark:bg-red-900/50 hover:bg-red-200 dark:hover:bg-red-800/50 border border-red-300 dark:border-red-800 text-sm text-red-600 dark:text-red-300 transition-colors disabled:opacity-40"
               >
                 {loading ? 'Slashing…' : 'Slash Bond'}
               </button>

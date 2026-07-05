@@ -2,12 +2,6 @@
 
 import { useRef, useEffect } from 'react';
 
-const ACCENT = '#ef9f27';
-const ACCENT_DIM = 'rgba(239, 159, 39, 0.18)';
-const SURFACE = '#0d0d14';
-const BG = '#050508';
-
-// 8 agent nodes, angles in degrees from east (right), clockwise
 const NODES = [
   { label: 'RESEARCH',  angle: -90  },
   { label: 'CODE-REV',  angle: -45  },
@@ -21,7 +15,7 @@ const NODES = [
 
 interface Particle {
   nodeIdx: number;
-  t: number;      // 0 = center, 1 = node
+  t: number;
   speed: number;
   dir: 1 | -1;
 }
@@ -32,6 +26,10 @@ function nodeXY(angle: number, cx: number, cy: number, R: number) {
   return { x: cx + R * Math.cos(toRad(angle)), y: cy + R * Math.sin(toRad(angle)) };
 }
 
+function getCSSVar(name: string): string {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+}
+
 export default function NetworkGraph() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -39,7 +37,6 @@ export default function NetworkGraph() {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    // Fixed internal resolution, CSS scales to container
     const IW = 640, IH = 340;
     const dpr = typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1;
     canvas.width = IW * dpr;
@@ -52,7 +49,6 @@ export default function NetworkGraph() {
     const cy = IH / 2;
     const R = Math.min(IW, IH) * 0.42;
 
-    // Seed particles staggered across each connection
     const particles: Particle[] = [];
     NODES.forEach((_, i) => {
       const count = i % 3 === 2 ? 1 : 2;
@@ -71,7 +67,38 @@ export default function NetworkGraph() {
 
     function draw() {
       const elapsed = (Date.now() - t0) / 1000;
+
+      const isDark = document.documentElement.classList.contains('dark');
+
+      // Read theme colors each frame so they update when theme changes
+      const ACCENT = getCSSVar('--accent');
+      const SURFACE = getCSSVar('--surface');
+      const BG = getCSSVar('--bg');
+      const accentRgb = getCSSVar('--accent-rgb');
+
+      // Light mode needs higher opacities — the same alpha values that work on
+      // near-black look washed out against an off-white background.
+      const lineAlpha          = isDark ? 0.20 : 0.65;
+      const lineWidth          = isDark ? 0.8  : 1.2;
+      const particleHaloAlpha  = isDark ? 0.12 : 0.30;
+      const nodeBorderBase     = isDark ? 0.28 : 0.55;
+      const nodeBorderRange    = isDark ? 0.18 : 0.12;
+      const nodeBorderIdle     = isDark ? 0.08 : 0.24;
+      const nodeTextBase       = isDark ? 0.65 : 0.88;
+      const nodeTextRange      = isDark ? 0.25 : 0.10;
+      const nodeTextIdle       = isDark ? 0.22 : 0.55;
+      const dotAlphaHi         = isDark ? 0.70 : 0.95;
+      const dotAlphaRange      = isDark ? 0.30 : 0.05;
+      const dotAlphaIdle       = isDark ? 0.40 : 0.60;
+
+      const accentDim          = `rgba(${accentRgb}, ${lineAlpha})`;
+      const accentParticleHalo = `rgba(${accentRgb}, ${particleHaloAlpha})`;
+
       ctx.clearRect(0, 0, IW, IH);
+
+      // Fill canvas bg
+      ctx.fillStyle = BG;
+      ctx.fillRect(0, 0, IW, IH);
 
       // Connection lines
       NODES.forEach(({ angle }) => {
@@ -79,8 +106,8 @@ export default function NetworkGraph() {
         ctx.beginPath();
         ctx.moveTo(cx, cy);
         ctx.lineTo(x, y);
-        ctx.strokeStyle = ACCENT_DIM;
-        ctx.lineWidth = 0.8;
+        ctx.strokeStyle = accentDim;
+        ctx.lineWidth = lineWidth;
         ctx.stroke();
       });
 
@@ -95,12 +122,10 @@ export default function NetworkGraph() {
         const px = cx + (nx - cx) * p.t;
         const py = cy + (ny - cy) * p.t;
 
-        // Halo
         ctx.beginPath();
         ctx.arc(px, py, 5, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(239, 159, 39, 0.1)';
+        ctx.fillStyle = accentParticleHalo;
         ctx.fill();
-        // Core
         ctx.beginPath();
         ctx.arc(px, py, 2, 0, Math.PI * 2);
         ctx.fillStyle = ACCENT;
@@ -111,19 +136,22 @@ export default function NetworkGraph() {
       const pulse = 0.5 + 0.5 * Math.sin(elapsed * 1.4);
       ctx.beginPath();
       ctx.arc(cx, cy, 38 + pulse * 5, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(239, 159, 39, ${0.03 + pulse * 0.04})`;
+      ctx.fillStyle = `rgba(${accentRgb}, ${isDark ? 0.03 + pulse * 0.04 : 0.08 + pulse * 0.06})`;
       ctx.fill();
 
-      // Center node
+      // Center node — shadow in light mode so it reads as floating
+      ctx.shadowBlur = isDark ? 0 : 12;
+      ctx.shadowColor = isDark ? 'transparent' : 'rgba(0, 0, 0, 0.18)';
       ctx.beginPath();
       ctx.arc(cx, cy, 30, 0, Math.PI * 2);
-      ctx.fillStyle = BG;
+      ctx.fillStyle = SURFACE;
       ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.shadowColor = 'transparent';
       ctx.strokeStyle = ACCENT;
-      ctx.lineWidth = 1.5;
+      ctx.lineWidth = isDark ? 1.5 : 2;
       ctx.stroke();
 
-      // Center label
       ctx.font = 'bold 11px "JetBrains Mono", monospace';
       ctx.fillStyle = ACCENT;
       ctx.textAlign = 'center';
@@ -135,35 +163,40 @@ export default function NetworkGraph() {
         const { x, y } = nodeXY(angle, cx, cy, R);
         const phase = elapsed * 1.8 + i * 0.75;
         const isActive = i % 3 !== 2;
-        const alphaMod = isActive ? 0.28 + 0.18 * Math.sin(phase) : 0.08;
+        const alphaMod = isActive
+          ? nodeBorderBase + nodeBorderRange * Math.sin(phase)
+          : nodeBorderIdle;
 
-        // Node circle
+        // Drop shadow in light mode so nodes read as distinct floating elements
+        ctx.shadowBlur = isDark ? 0 : 8;
+        ctx.shadowColor = isDark ? 'transparent' : 'rgba(0, 0, 0, 0.13)';
         ctx.beginPath();
         ctx.arc(x, y, 24, 0, Math.PI * 2);
         ctx.fillStyle = SURFACE;
         ctx.fill();
-        ctx.strokeStyle = `rgba(239, 159, 39, ${alphaMod})`;
-        ctx.lineWidth = 1;
+        ctx.shadowBlur = 0;
+        ctx.shadowColor = 'transparent';
+
+        ctx.strokeStyle = `rgba(${accentRgb}, ${alphaMod})`;
+        ctx.lineWidth = isDark ? 1 : 1.5;
         ctx.stroke();
 
-        // Label
         const fs = label.length > 6 ? 7.5 : 8.5;
         ctx.font = `${fs}px "JetBrains Mono", monospace`;
         ctx.fillStyle = isActive
-          ? `rgba(239, 159, 39, ${0.65 + 0.25 * Math.sin(phase)})`
-          : 'rgba(239, 159, 39, 0.22)';
+          ? `rgba(${accentRgb}, ${nodeTextBase + nodeTextRange * Math.sin(phase)})`
+          : `rgba(${accentRgb}, ${nodeTextIdle})`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText(label, x, y);
 
-        // Status dot
         const dotPulse = 0.5 + 0.5 * Math.sin(phase + 0.8);
         const dotR = isActive ? 2.5 + dotPulse * 0.8 : 1.8;
         ctx.beginPath();
         ctx.arc(x + 17, y - 17, dotR, 0, Math.PI * 2);
         ctx.fillStyle = isActive
-          ? `rgba(239, 159, 39, ${0.7 + 0.3 * dotPulse})`
-          : 'rgba(80, 80, 100, 0.5)';
+          ? `rgba(${accentRgb}, ${dotAlphaHi + dotAlphaRange * dotPulse})`
+          : `rgba(${accentRgb}, ${dotAlphaIdle})`;
         ctx.fill();
       });
 
