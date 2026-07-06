@@ -95,3 +95,23 @@ html.dark .nav-surface {
   from { transform: translateX(0); }
   to   { transform: translateX(-50%); }
 }
+
+/* ── Responsive safeguards ────────────────────────────────────────────────────
+   Explicit !important rules back up the Tailwind responsive classes so layout
+   is correct even if Turbopack JIT hasn't emitted the exact class combo yet.  */
+
+/* Nav: hamburger/desktop split at md (768 px) */
+@media (max-width: 767px) {
+  .nav-desktop { display: none !important; }
+}
+@media (min-width: 768px) {
+  .nav-mobile-only { display: none !important; }
+}
+
+/* TickerStrip: grid/scrolling-ticker split at sm (640 px) */
+@media (min-width: 640px) {
+  .ticker-mobile { display: none !important; }
+}
+@media (max-width: 639px) {
+  .ticker-desktop { display: none !important; }
+}

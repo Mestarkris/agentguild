@@ -42,6 +42,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
+    await reloadFromBlob(); // Ensure we see jobs written by other lambda instances
     await ensureSeeded();
     const body = await req.json() as { description?: string; payer_address?: string; buyer_tx?: string };
     const { description, payer_address, buyer_tx } = body;
@@ -50,11 +51,33 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'description required' }, { status: 400 });
     }
 
-    const dedupKey = description.trim();
+    // Fast path: same-lambda in-memory dedup (key includes payer to avoid cross-user collisions)
+    const dedupKey = `${payer_address ?? 'anon'}:${description.trim()}`;
     const cached = dedupCache.get(dedupKey);
     if (cached && Date.now() - cached.ts < DEDUP_TTL_MS) {
-      console.log(`[Jobs POST] Dedup hit — returning existing jobId ${cached.jobId} for identical description`);
+      console.log(`[Jobs POST] Dedup hit (memory) — returning existing jobId ${cached.jobId}`);
       return NextResponse.json({ jobId: cached.jobId, status: 'pending', message: 'Duplicate request — returning existing job', dedup: true });
+    }
+
+    // DB-level dedup: same buyer_tx means same payment → definitely the same job
+    if (buyer_tx) {
+      const txRows = await query('SELECT id FROM jobs WHERE buyer_tx = ? LIMIT 1', [buyer_tx]);
+      if (txRows[0]) {
+        const existingId = txRows[0].id as string;
+        console.log(`[Jobs POST] Dedup hit (buyer_tx) — returning existing jobId ${existingId}`);
+        return NextResponse.json({ jobId: existingId, status: 'pending', message: 'Duplicate request — returning existing job', dedup: true });
+      }
+    }
+
+    // DB-level dedup: same description within 15 seconds from same payer
+    const recentRows = await query(
+      "SELECT id FROM jobs WHERE description = ? AND submitted_at > datetime('now', '-15 seconds') LIMIT 1",
+      [description.trim()]
+    );
+    if (recentRows[0]) {
+      const existingId = recentRows[0].id as string;
+      console.log(`[Jobs POST] Dedup hit (recent description) — returning existing jobId ${existingId}`);
+      return NextResponse.json({ jobId: existingId, status: 'pending', message: 'Duplicate request — returning existing job', dedup: true });
     }
 
     const jobId = uuidv4();

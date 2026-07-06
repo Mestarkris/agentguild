@@ -18,8 +18,26 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   const mockMode = process.env.MOCK_MODE === 'true';
   return (
-    <html lang="en" className={jetbrainsMono.variable}>
-      <body className="min-h-screen bg-[#050508] text-white antialiased">
+    <html lang="en" className={jetbrainsMono.variable + ' dark'} suppressHydrationWarning>
+      <head>
+        {/* Anti-flicker: apply theme class before first paint */}
+        <script dangerouslySetInnerHTML={{ __html: `
+          (function(){
+            try {
+              var t = localStorage.getItem('ag-theme');
+              var el = document.documentElement;
+              if (t === 'light') {
+                el.classList.remove('dark');
+                el.classList.add('light');
+              } else {
+                el.classList.add('dark');
+                el.classList.remove('light');
+              }
+            } catch(e) {}
+          })();
+        `}} />
+      </head>
+      <body className="min-h-screen antialiased">
         <Providers>
           <Nav />
           {mockMode && (

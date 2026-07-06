@@ -209,6 +209,22 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     } catch {
       // chain-ID check failed — silently ignore, user can dismiss manually if needed
     }
+
+    // Register Arc USDC with MetaMask so it shows "0.0025 USDC" instead of
+    // the raw uint256 integer ("-2500 unknown token") in transaction prompts.
+    // wallet_watchAsset is fire-and-forget — failure is non-critical.
+    p.raw.request({
+      method: 'wallet_watchAsset',
+      params: [{
+        type: 'ERC20',
+        options: {
+          address: USDC_CONTRACT,
+          symbol:  'USDC',
+          decimals: USDC_DECIMALS,
+          image: 'https://cryptologos.cc/logos/usd-coin-usdc-logo.png',
+        },
+      }],
+    }).catch(() => { /* non-critical */ });
   }
 
   // ── STEP 2: switch / add Arc Testnet ────────────────────────────────────────

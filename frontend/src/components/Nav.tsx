@@ -93,7 +93,7 @@ export default function Nav() {
         </Link>
 
         {/* Desktop: nav links */}
-        <div className="hidden md:flex items-center gap-1">
+        <div className="nav-desktop hidden md:flex items-center gap-1">
           {links.map(l => {
             const active = l.exact ? path === l.href : path.startsWith(l.href);
             return (
@@ -110,7 +110,7 @@ export default function Nav() {
         </div>
 
         {/* Desktop: theme + wallet */}
-        <div className="hidden md:flex items-center gap-2 ml-auto">
+        <div className="nav-desktop hidden md:flex items-center gap-2 ml-auto">
           <button onClick={toggle}
             className="p-1.5 rounded-md text-[var(--text-3)] hover:text-[var(--text-1)] hover:bg-[var(--tint-accent)] transition-colors"
             title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}>
@@ -159,7 +159,7 @@ export default function Nav() {
         </div>
 
         {/* Mobile: theme toggle + hamburger */}
-        <div className="flex md:hidden items-center gap-1 ml-auto">
+        <div className="nav-mobile-only flex md:hidden items-center gap-1 ml-auto">
           <button onClick={toggle}
             className="p-2 rounded-md text-[var(--text-3)] hover:text-[var(--text-1)] transition-colors"
             title={theme === 'dark' ? 'Light mode' : 'Dark mode'}>
@@ -175,7 +175,7 @@ export default function Nav() {
 
       {/* ── Mobile dropdown menu ─────────────────────────────── */}
       {navOpen && (
-        <div className="md:hidden border-t border-[var(--border-accent-dim)] bg-[var(--surface)]">
+        <div className="nav-mobile-only md:hidden border-t border-[var(--border-accent-dim)] bg-[var(--surface)]">
           {/* Nav links */}
           <div className="px-3 pt-2 pb-1 space-y-0.5">
             {links.map(l => {

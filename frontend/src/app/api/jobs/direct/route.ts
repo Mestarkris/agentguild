@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { waitUntil } from '@vercel/functions';
 import { v4 as uuidv4 } from 'uuid';
-import { query, exec, flushNow } from '@/lib/server/db';
+import { query, exec, flushNow, reloadFromBlob } from '@/lib/server/db';
 import { ensureSeeded } from '@/lib/server/seed';
 import { runDirectJob } from '@/lib/server/runner';
 
@@ -14,8 +14,13 @@ const DOC_CAPABLE_SKILLS = new Set([
   'extract', 'legal-review', 'finance', 'transcribe', 'fact-check',
 ]);
 
+// 15-second in-memory dedup cache for same-lambda rapid double-submits
+const DIRECT_DEDUP_TTL_MS = 15 * 1000;
+const directDedupCache = new Map<string, { jobId: string; ts: number }>();
+
 export async function POST(req: NextRequest) {
   try {
+    await reloadFromBlob(); // Ensure we see jobs written by other lambda instances
     await ensureSeeded();
 
     let agentId: string;
@@ -84,7 +89,37 @@ export async function POST(req: NextRequest) {
     const agentRows = await query('SELECT * FROM agents WHERE id = ?', [agentId]);
     if (!agentRows[0]) return NextResponse.json({ error: 'Agent not found' }, { status: 404 });
 
+    // Fast path: same-lambda in-memory dedup
+    const dedupKey = `${agentId}:${description.trim()}`;
+    const cached = directDedupCache.get(dedupKey);
+    if (cached && Date.now() - cached.ts < DIRECT_DEDUP_TTL_MS) {
+      console.log(`[DirectJob] Dedup hit (memory) — returning existing jobId ${cached.jobId}`);
+      return NextResponse.json({ jobId: cached.jobId, status: 'pending', dedup: true });
+    }
+
+    // DB-level dedup: same buyer_tx means same payment → same job
+    if (buyerTx) {
+      const txRows = await query('SELECT id FROM jobs WHERE buyer_tx = ? LIMIT 1', [buyerTx]);
+      if (txRows[0]) {
+        const existingId = txRows[0].id as string;
+        console.log(`[DirectJob] Dedup hit (buyer_tx) — returning existing jobId ${existingId}`);
+        return NextResponse.json({ jobId: existingId, status: 'pending', dedup: true });
+      }
+    }
+
+    // DB-level dedup: same agent + description within 15 seconds
+    const recentRows = await query(
+      "SELECT id FROM jobs WHERE direct_agent_id = ? AND description = ? AND submitted_at > datetime('now', '-15 seconds') LIMIT 1",
+      [agentId, description.trim()]
+    );
+    if (recentRows[0]) {
+      const existingId = recentRows[0].id as string;
+      console.log(`[DirectJob] Dedup hit (recent description) — returning existing jobId ${existingId}`);
+      return NextResponse.json({ jobId: existingId, status: 'pending', dedup: true });
+    }
+
     const jobId = uuidv4();
+    directDedupCache.set(dedupKey, { jobId, ts: Date.now() });
     await exec(
       "INSERT INTO jobs (id, description, status, job_type, direct_agent_id, buyer_tx) VALUES (?, ?, 'pending', 'direct', ?, ?)",
       [jobId, description.trim(), agentId, buyerTx ?? null]
