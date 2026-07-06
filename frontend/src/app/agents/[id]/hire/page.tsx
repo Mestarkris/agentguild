@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { flushSync } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
@@ -275,8 +276,9 @@ export default function HirePage() {
             {!approved ? (
               <button type="button" disabled={!hasInput || approving}
                 onClick={async () => {
-                  setApproving(true);
-                  setError('');
+                  // flushSync forces React to render the spinner before any async work starts,
+                  // giving instant visual feedback on click regardless of RPC latency.
+                  flushSync(() => { setApproving(true); setError(''); });
                   try {
                     const jobDesc = description.trim() || `Hire ${agent.name} for ${agent.skill}`;
                     const txHash = await sendPayment(estimatedCost, jobDesc);
