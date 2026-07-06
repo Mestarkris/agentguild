@@ -309,42 +309,26 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   const sendPayment = useCallback(async (amountUsdc: string, _desc: string): Promise<string> => {
     if (!address || !activeProvider) throw new Error('Wallet not connected');
 
-    const t0 = performance.now();
     const data = encodeTransfer(PLATFORM_WALLET, amountUsdc);
 
     // Pre-flight in parallel: chainId (wallet cache), nonce + gasPrice (Arc RPC direct).
     // Providing these to eth_sendTransaction means the wallet skips its own sequential
     // RPC round-trips before showing the popup — that's the main source of popup latency.
     // Gas is already hardcoded (TRANSFER_GAS = 100k) so eth_estimateGas is not needed.
-    console.log(`[pay] t+0ms — pre-flight: eth_chainId (wallet) + nonce + gasPrice (Arc) in parallel`);
-    const tPF0 = performance.now();
     const [chainId, nonce, gasPrice] = await Promise.all([
       activeProvider.request<string>({ method: 'eth_chainId' }),
       arcRpc<string>('eth_getTransactionCount', [address, 'pending']),
       arcRpc<string>('eth_gasPrice', []),
     ]);
-    const tPF1 = performance.now();
-    console.log(
-      `[pay] t+${(tPF1 - t0).toFixed(0)}ms — pre-flight done in ${(tPF1 - tPF0).toFixed(0)}ms` +
-      ` | chainId=${chainId} nonce=${nonce} gasPrice=${gasPrice}`,
-    );
 
     if (chainId?.toLowerCase() !== ARC_CHAIN_ID.toLowerCase()) {
       throw new Error(`Wrong network — please switch to Arc Testnet (chain ${parseInt(ARC_CHAIN_ID, 16)})`);
     }
 
-    console.log(`[pay] t+${(tPF1 - t0).toFixed(0)}ms — calling eth_sendTransaction (wallet popup should open now)`);
     const txHash = await activeProvider.request<string>({
       method: 'eth_sendTransaction',
       params: [{ from: address, to: USDC_CONTRACT, data, gas: TRANSFER_GAS, nonce, gasPrice }],
     });
-    const tSigned = performance.now();
-    console.log(`[pay] t+${(tSigned - t0).toFixed(0)}ms — wallet approved | txHash=${txHash}`);
-    console.log(
-      `[pay] BREAKDOWN — parallel pre-flight (chainId+nonce+gasPrice): ${(tPF1 - tPF0).toFixed(0)}ms` +
-      ` | wallet popup→user approved: ${(tSigned - tPF1).toFixed(0)}ms` +
-      ` | total click→approved: ${(tSigned - t0).toFixed(0)}ms`,
-    );
 
     if (!txHash) throw new Error('No tx hash returned from wallet');
     await waitForReceipt(txHash);
