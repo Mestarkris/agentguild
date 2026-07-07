@@ -43,9 +43,15 @@ export async function POST(req: NextRequest) {
         const filename = file.name;
 
         if (mime.startsWith('audio/') || /\.(mp3|wav|m4a|ogg|flac|aac)$/i.test(filename)) {
-          // Audio: force TranscribeAgent
+          // Audio: force TranscribeAgent — the original agent may not handle audio
           const transcribeRows = await query("SELECT id FROM agents WHERE skill = 'transcribe' LIMIT 1");
-          if (transcribeRows[0]) agentId = transcribeRows[0].id as string;
+          if (!transcribeRows[0]) {
+            return NextResponse.json(
+              { error: 'No TranscribeAgent available to process this audio file.' },
+              { status: 422 }
+            );
+          }
+          agentId = transcribeRows[0].id as string;
           description = description
             ? `Transcribe this audio file (${filename}) and also: ${description}`
             : `Transcribe the provided audio recording: ${filename}`;

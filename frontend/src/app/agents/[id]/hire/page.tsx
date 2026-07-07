@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { flushSync } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
@@ -93,13 +92,14 @@ export default function HirePage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!hasInput || !address) return;
+    if (!hasInput || !address || !approved) return;
     if (submittingRef.current) return;
     submittingRef.current = true;
     setSubmitting(true);
     setError('');
     try {
-      const desc = inputMode === 'text' ? description : (description.trim() || `Process file: ${file!.name}`);
+      const desc = inputMode === 'text' ? description : (description.trim() || (file ? `Process file: ${file.name}` : description.trim()));
+      if (!desc.trim()) { setError('Please add a description or upload a file.'); return; }
       const { jobId } = await submitDirectJob(id, desc, address, inputMode === 'file' ? file ?? undefined : undefined, buyerTxHash ?? undefined);
       router.push(`/jobs/${jobId}`);
     } catch (err: unknown) {
@@ -276,9 +276,8 @@ export default function HirePage() {
             {!approved ? (
               <button type="button" disabled={!hasInput || approving}
                 onClick={async () => {
-                  // flushSync forces React to render the spinner before any async work starts,
-                  // giving instant visual feedback on click regardless of RPC latency.
-                  flushSync(() => { setApproving(true); setError(''); });
+                  setApproving(true);
+                  setError('');
                   try {
                     const jobDesc = description.trim() || `Hire ${agent.name} for ${agent.skill}`;
                     const txHash = await sendPayment(estimatedCost, jobDesc);
