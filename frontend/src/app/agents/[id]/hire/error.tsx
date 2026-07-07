@@ -11,10 +11,25 @@ export default function HireError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
-  const { id } = useParams() as { id: string };
+  // useParams() can return null in some Next.js edge cases when the boundary
+  // fires during early hydration — be defensive to avoid cascading failures.
+  const params = useParams();
+  const id = (params?.id as string | undefined) ?? '';
 
   useEffect(() => {
-    console.error('[HireError]', error);
+    console.error('[HireError]', error.message, error.stack);
+    // Report to server so the error appears in Vercel runtime logs.
+    fetch('/api/client-errors', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        boundary: 'HireError',
+        message: error.message,
+        stack: error.stack,
+        digest: error.digest,
+        url: typeof window !== 'undefined' ? window.location.href : '',
+      }),
+    }).catch(() => {});
   }, [error]);
 
   return (
