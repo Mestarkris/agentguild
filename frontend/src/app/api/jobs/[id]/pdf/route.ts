@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { query } from '@/lib/server/db';
+import { query, reloadFromBlob } from '@/lib/server/db';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type PDFDoc = any;
 
@@ -62,7 +62,11 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   try {
     const { id } = await params;
 
-    const jobRows = await query('SELECT * FROM jobs WHERE id = ?', [id]);
+    let jobRows = await query('SELECT * FROM jobs WHERE id = ?', [id]);
+    if (!jobRows[0]) {
+      await reloadFromBlob();
+      jobRows = await query('SELECT * FROM jobs WHERE id = ?', [id]);
+    }
     if (!jobRows[0]) return NextResponse.json({ error: 'Job not found' }, { status: 404 });
     const job = jobRows[0] as Record<string, unknown>;
 

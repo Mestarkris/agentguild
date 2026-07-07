@@ -311,23 +311,25 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
     const data = encodeTransfer(PLATFORM_WALLET, amountUsdc);
 
-    // Pre-flight in parallel: chainId (wallet cache), nonce + gasPrice (Arc RPC direct).
-    // Providing these to eth_sendTransaction means the wallet skips its own sequential
-    // RPC round-trips before showing the popup — that's the main source of popup latency.
-    // Gas is already hardcoded (TRANSFER_GAS = 100k) so eth_estimateGas is not needed.
-    const [chainId, nonce, gasPrice] = await Promise.all([
-      activeProvider.request<string>({ method: 'eth_chainId' }),
-      arcRpc<string>('eth_getTransactionCount', [address, 'pending']),
-      arcRpc<string>('eth_gasPrice', []),
-    ]);
+    // Queue watchAsset BEFORE the send so MetaMask knows Arc USDC's 6 decimals
+    // and shows "0.005 USDC" instead of "5000 unknown token" in the confirmation.
+    // Not awaited: both requests enter MetaMask's RPC queue in order, so watchAsset
+    // is always processed first. If already registered, MetaMask skips the popup.
+    activeProvider.request({
+      method: 'wallet_watchAsset',
+      params: [{ type: 'ERC20', options: {
+        address: USDC_CONTRACT, symbol: 'USDC', decimals: USDC_DECIMALS,
+        image: 'https://cryptologos.cc/logos/usd-coin-usdc-logo.png',
+      } }],
+    }).catch(() => { /* non-critical */ });
 
-    if (chainId?.toLowerCase() !== ARC_CHAIN_ID.toLowerCase()) {
-      throw new Error(`Wrong network — please switch to Arc Testnet (chain ${parseInt(ARC_CHAIN_ID, 16)})`);
-    }
-
+    // No pre-flight awaits before eth_sendTransaction — preserves the browser's
+    // user-activation window so MetaMask's popup appears automatically.
+    // MetaMask fills nonce and gasPrice itself; gas is hardcoded (100k) which is
+    // sufficient for any ERC-20 transfer and avoids eth_estimateGas latency.
     const txHash = await activeProvider.request<string>({
       method: 'eth_sendTransaction',
-      params: [{ from: address, to: USDC_CONTRACT, data, gas: TRANSFER_GAS, nonce, gasPrice }],
+      params: [{ from: address, to: USDC_CONTRACT, data, gas: TRANSFER_GAS }],
     });
 
     if (!txHash) throw new Error('No tx hash returned from wallet');
