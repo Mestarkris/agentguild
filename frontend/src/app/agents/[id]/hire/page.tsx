@@ -20,11 +20,29 @@ const SKILL_EMOJI: Record<string, string> = {
 const AUDIO_EXTS = /\.(mp3|wav|m4a|ogg|flac|aac|opus)$/i;
 const AUDIO_MIME = /^audio\//;
 
+// Vercel Serverless Functions hard-cap the request body at 4.5MB — anything larger
+// gets rejected by the platform before our route handler ever runs. Stay under that
+// with headroom for multipart overhead + form fields.
+const MAX_UPLOAD_BYTES = 4 * 1024 * 1024;
+
 function isAudioFile(f: File) {
   return AUDIO_MIME.test(f.type) || AUDIO_EXTS.test(f.name);
 }
 
 function truncAddr(a: string) { return `${a.slice(0, 6)}…${a.slice(-4)}`; }
+
+// Never let a non-string value reach JSX — a raw {code,message} object (e.g. Vercel's
+// own platform error shape for FUNCTION_PAYLOAD_TOO_LARGE) would crash the whole page
+// with React error #31 if rendered directly.
+function extractErrorMessage(err: unknown, fallback: string): string {
+  const apiError = (err as { response?: { data?: { error?: unknown } } })?.response?.data?.error;
+  if (typeof apiError === 'string' && apiError.trim()) return apiError;
+  if (apiError && typeof apiError === 'object' && typeof (apiError as { message?: unknown }).message === 'string') {
+    return (apiError as { message: string }).message;
+  }
+  if (err instanceof Error && err.message) return err.message;
+  return fallback;
+}
 
 export default function HirePage() {
   const { id } = useParams() as { id: string };
@@ -80,9 +98,15 @@ export default function HirePage() {
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0] ?? null;
-    setFile(f);
     setFileWarning('');
-    if (!f) return;
+    if (!f) { setFile(null); return; }
+    if (f.size > MAX_UPLOAD_BYTES) {
+      setFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      setFileWarning(`File too large (${(f.size / 1024 / 1024).toFixed(1)}MB) — please upload something under ${(MAX_UPLOAD_BYTES / 1024 / 1024).toFixed(0)}MB. For longer audio, trim the clip or compress it first.`);
+      return;
+    }
+    setFile(f);
     if (isAudioAgent && !isAudioFile(f)) {
       setFileWarning(`TranscribeAgent works with audio files only (.mp3, .wav, .m4a). This looks like a document — switching to ExtractAgent automatically when submitted.`);
     } else if (!isAudioAgent && isAudioFile(f)) {
@@ -103,9 +127,7 @@ export default function HirePage() {
       const { jobId } = await submitDirectJob(id, desc, address, inputMode === 'file' ? file ?? undefined : undefined, buyerTxHash ?? undefined);
       router.push(`/jobs/${jobId}`);
     } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
-        ?? (err as Error)?.message ?? 'Submission failed';
-      setError(msg);
+      setError(extractErrorMessage(err, 'Submission failed'));
     } finally {
       submittingRef.current = false;
       setSubmitting(false);
@@ -284,7 +306,7 @@ export default function HirePage() {
                     setBuyerTxHash(txHash);
                     setApproved(true);
                   } catch (err: unknown) {
-                    const msg = (err as Error)?.message ?? 'Payment failed';
+                    const msg = extractErrorMessage(err, 'Payment failed');
                     if (!msg.toLowerCase().includes('user rejected') && !msg.toLowerCase().includes('user denied')) {
                       setError(msg);
                     }

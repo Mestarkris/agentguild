@@ -4,9 +4,13 @@ import { v4 as uuidv4 } from 'uuid';
 import { query, exec, flushNow, reloadFromBlob } from '@/lib/server/db';
 import { ensureSeeded } from '@/lib/server/seed';
 import { runDirectJob } from '@/lib/server/runner';
+import { transcribeAudio } from '@/lib/server/llm';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
+
+// Groq's free-tier Whisper endpoint rejects files above this size.
+const MAX_AUDIO_BYTES = 25 * 1024 * 1024;
 
 // Skills that can meaningfully process uploaded text/doc content
 const DOC_CAPABLE_SKILLS = new Set([
@@ -52,9 +56,36 @@ export async function POST(req: NextRequest) {
             );
           }
           agentId = transcribeRows[0].id as string;
+
+          if (file.size > MAX_AUDIO_BYTES) {
+            return NextResponse.json(
+              { error: `Audio file too large (${(file.size / 1024 / 1024).toFixed(1)}MB) — Groq's transcription API accepts up to 25MB.` },
+              { status: 413 }
+            );
+          }
+
+          // Actually run speech-to-text on the uploaded audio (Groq Whisper) —
+          // the chat model has no audio input and previously just hallucinated a "transcript".
+          let rawTranscript: string;
+          try {
+            const { text } = await transcribeAudio(file);
+            rawTranscript = text;
+          } catch (err) {
+            return NextResponse.json(
+              { error: `Audio transcription failed: ${(err as Error).message}` },
+              { status: 502 }
+            );
+          }
+          if (!rawTranscript.trim()) {
+            return NextResponse.json(
+              { error: 'Transcription produced no speech — the audio may be silent, unsupported, or corrupted.' },
+              { status: 422 }
+            );
+          }
+
           description = description
-            ? `Transcribe this audio file (${filename}) and also: ${description}`
-            : `Transcribe the provided audio recording: ${filename}`;
+            ? `Clean up and format this transcript, then also: ${description}\n\nRaw transcript of ${filename}:\n${rawTranscript}`
+            : `Clean up and format this transcript of ${filename}:\n\n${rawTranscript}`;
         } else {
           // Text/doc/pdf: read text if possible and prepend to description
           let fileText = '';

@@ -211,6 +211,55 @@ async function _doChat(
   throw lastErr ?? new Error(`All ${MAX_ATTEMPTS} Groq attempts failed for [${label}]`);
 }
 
+// Real speech-to-text via Groq's Whisper endpoint. Distinct from chatComplete
+// (which only talks to the text chat model and cannot see audio at all).
+export async function transcribeAudio(file: File, label = 'Whisper'): Promise<{ text: string; servedBy: string }> {
+  if (process.env.MOCK_MODE === 'true') {
+    console.log(`[${label}] MOCK_MODE — skipping Whisper call`);
+    return { text: MOCK_RESPONSES.transcribe, servedBy: 'mock' };
+  }
+
+  const keys = getGroqKeys();
+  if (keys.length === 0) throw new Error('No Groq API key configured for audio transcription');
+
+  let lastErr: unknown;
+  for (let i = 0; i < keys.length; i++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 60_000);
+    try {
+      const form = new FormData();
+      form.append('file', file, file.name);
+      form.append('model', 'whisper-large-v3-turbo');
+      form.append('response_format', 'text');
+
+      const resp = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${keys[i]}` },
+        body: form,
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+
+      if (!resp.ok) {
+        const body = await resp.text();
+        throw Object.assign(new Error(`Whisper[key=${i + 1}/${keys.length}] ${resp.status}: ${body}`), { status: resp.status });
+      }
+
+      const text = (await resp.text()).trim();
+      console.log(`[${label}] key=${i + 1}/${keys.length} transcribed via groq/whisper-large-v3-turbo (${text.length} chars)`);
+      return { text, servedBy: 'groq/whisper-large-v3-turbo' };
+    } catch (err) {
+      clearTimeout(timer);
+      const isTimeout = (err as { name?: string }).name === 'AbortError';
+      lastErr = isTimeout ? new Error(`Whisper[key=${i + 1}/${keys.length}] timeout`) : err;
+      const status = (err as { status?: number }).status;
+      if (status === 429 || status === 413 || isTimeout) continue; // try next key
+      throw lastErr;
+    }
+  }
+  throw lastErr ?? new Error('All Groq keys failed for audio transcription');
+}
+
 export async function chatComplete({
   messages,
   system,
